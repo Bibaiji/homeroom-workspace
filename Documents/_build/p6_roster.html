@@ -1,0 +1,431 @@
+<script>
+/* ================= 花名册 ================= */
+const TAG_STYLES={
+  '心理关注':'pill-pink','学科偏科':'pill-amber','待关注':'pill-red',
+  '特长生':'pill-blue','体育特长':'pill-blue','艺术特长':'pill-purple',
+  '学习标兵':'pill-green','进步之星':'pill-green'
+};
+function tagPill(t){
+  t=(t||'').trim();
+  if(!t)return'';
+  return `<span class="pill ${TAG_STYLES[t]||'pill-gray'}">${Utils.esc(t)}</span>`;
+}
+const Roster={
+  view:'table',
+  render(){
+    const students=Store.get('students',[])||[];
+    document.getElementById('rosterCount').textContent=`（共${students.length}人）`;
+    // 筛选器选项
+    const gf=document.getElementById('rosterGenderFilter');
+    const gsel=document.getElementById('rosterGroupFilter');
+    const tsel=document.getElementById('rosterTagFilter');
+    const groups=[...new Set(students.map(s=>s.group||0))].sort((a,b)=>a-b);
+    const tags=[];
+    students.forEach(s=>(s.tags||'').split(/[,，、]/).forEach(t=>{t=t.trim();if(t&&!tags.includes(t))tags.push(t)}));
+    const curG=gsel.value,curT=tsel.value;
+    gsel.innerHTML='<option value="">全部小组</option>'+groups.map(g=>`<option value="${g}">第${g}组</option>`).join('');
+    tsel.innerHTML='<option value="">全部标签</option>'+tags.map(t=>`<option value="${Utils.esc(t)}">${Utils.esc(t)}</option>`).join('');
+    gsel.value=curG;tsel.value=curT;
+    // 过滤
+    const search=(document.getElementById('rosterSearch').value||'').toLowerCase();
+    const gender=gf.value;
+    const group=gsel.value,tag=tsel.value;
+    const filtered=students.filter(s=>{
+      if(search&&!(
+        s.name.toLowerCase().includes(search)||s.id.toLowerCase().includes(search)||
+        (s.p1Name||'').toLowerCase().includes(search)||(s.p2Name||'').toLowerCase().includes(search)||
+        (s.p1Phone||'').includes(search)||(s.p2Phone||'').includes(search)||
+        (s.address||'').toLowerCase().includes(search)
+      ))return false;
+      if(gender&&s.gender!==gender)return false;
+      if(group&&String(s.group||'')!==group)return false;
+      if(tag){
+        const sts=(s.tags||'').split(/[,，、]/).map(x=>x.trim());
+        if(!sts.includes(tag))return false;
+      }
+      return true;
+    });
+    document.getElementById('viewToggleBtn').textContent=this.view==='table'?'卡片视图':'表格视图';
+    const cont=document.getElementById('rosterContent');
+    if(!filtered.length){cont.innerHTML='<div class="empty-state">没有符合条件的学生</div>';return}
+    if(this.view==='table')this.renderTable(filtered);
+    else this.renderCards(filtered);
+  },
+  renderTable(students){
+    const roles=RoleHelper.map();
+    let html=`<div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th>学号</th><th>姓名</th><th>性别</th><th>出生日期</th><th>家长一</th><th>家长二</th><th>小组</th><th>标签</th><th style="width:132px">操作</th>
+    </tr></thead><tbody>`;
+    students.forEach(s=>{
+      const role=roles[s.name];
+      const tags=(s.tags||'').split(/[,，、]/).filter(Boolean).map(t=>tagPill(t)).join(' ');
+      html+=`<tr>
+        <td class="text-muted" style="font-variant-numeric:tabular-nums">${Utils.esc(s.id)}</td>
+        <td class="font-semi">${Utils.esc(s.name)} ${role?`<span class="pill pill-green" style="font-size:10px;padding:0 7px">${Utils.esc(role)}</span>`:''}</td>
+        <td>${s.gender==='女'?'<span class="pill pill-pink" style="font-size:10px;padding:0 8px">女</span>':'<span class="pill pill-blue" style="font-size:10px;padding:0 8px">男</span>'}</td>
+        <td class="text-muted">${Utils.esc(s.birthDate||'-')}</td>
+        <td class="text-sm">${Utils.esc(s.p1Name||'-')}<br><span class="text-xs text-faint">${Utils.esc(s.p1Phone||'')}</span></td>
+        <td class="text-sm">${Utils.esc(s.p2Name||'-')}<br><span class="text-xs text-faint">${Utils.esc(s.p2Phone||'')}</span></td>
+        <td>第${s.group||'?'}组</td>
+        <td>${tags||'<span class="text-faint">-</span>'}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="Roster.edit('${Utils.esc(s.id)}')">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="Roster.del('${Utils.esc(s.id)}')">删除</button>
+        </td>
+      </tr>`;
+    });
+    html+='</tbody></table></div></div>';
+    document.getElementById('rosterContent').innerHTML=html;
+  },
+  renderCards(students){
+    const roles=RoleHelper.map();
+    let html='<div class="grid grid-3">';
+    students.forEach(s=>{
+      const color=Utils.avatarColor(s.name);
+      const role=roles[s.name];
+      const tags=(s.tags||'').split(/[,，、]/).filter(Boolean).map(t=>tagPill(t)).join(' ');
+      html+=`<div class="contact-card">
+        <div class="contact-head">
+          <div class="roster-avatar" style="background:${color}">${Utils.esc((s.name||'?')[0])}</div>
+          <div style="flex:1;min-width:0">
+            <div class="contact-name">${Utils.esc(s.name)} ${role?`<span class="pill pill-green" style="font-size:10px;padding:0 7px">${Utils.esc(role)}</span>`:''}</div>
+            <div class="text-xs text-faint">${Utils.esc(s.id)} · ${s.gender||''} · 第${s.group||'?'}组</div>
+          </div>
+        </div>
+        <div class="text-xs" style="color:var(--text-2);line-height:1.9">
+          <div>🎂 ${Utils.esc(s.birthDate||'-')}</div>
+          <div>🏠 ${Utils.esc(s.address||'-')}</div>
+          <div>👤 ${Utils.esc(s.p1Name||'-')} ${Utils.esc(s.p1Phone||'')}</div>
+          ${s.p2Name?`<div>👤 ${Utils.esc(s.p2Name)} ${Utils.esc(s.p2Phone||'')}</div>`:''}
+        </div>
+        ${tags?`<div class="flex" style="flex-wrap:wrap;gap:5px">${tags}</div>`:''}
+        <div class="flex gap-2 mt-2">
+          <button class="btn btn-ghost btn-sm" style="flex:1" onclick="Roster.edit('${Utils.esc(s.id)}')">编辑</button>
+          <button class="btn btn-danger btn-sm" style="flex:1" onclick="Roster.del('${Utils.esc(s.id)}')">删除</button>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+    document.getElementById('rosterContent').innerHTML=html;
+  },
+  toggleView(){this.view=this.view==='table'?'cards':'table';this.render()},
+  add(){
+    const s={id:'',name:'',gender:'男',birthDate:'',p1Name:'',p1Phone:'',p2Name:'',p2Phone:'',address:'',group:1,tags:'',note:''};
+    this.editForm(s,true);
+  },
+  edit(id){
+    const s=(Store.get('students',[])||[]).find(x=>x.id===id);
+    if(!s){Utils.toast('未找到该学生','error');return}
+    this.editForm(s,false);
+  },
+  editForm(s,isNew){
+    Utils.modal(isNew?'添加学生':'编辑学生',`
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-2">
+          <div><label class="label">学号</label><input class="input" id="f_id" value="${Utils.esc(s.id)}" ${isNew?'':'readonly style="background:var(--soft)"'}></div>
+          <div><label class="label">姓名</label><input class="input" id="f_name" value="${Utils.esc(s.name)}"></div>
+        </div>
+        <div class="grid grid-2">
+          <div><label class="label">性别</label><select class="select" id="f_gender"><option value="男" ${s.gender==='男'?'selected':''}>男</option><option value="女" ${s.gender==='女'?'selected':''}>女</option></select></div>
+          <div><label class="label">出生日期</label><input class="input" type="date" id="f_birth" value="${Utils.esc(s.birthDate||'')}"></div>
+        </div>
+        <div class="drawer-sec-title" style="margin:6px 0 0">家长一</div>
+        <div class="grid grid-2">
+          <div><label class="label">姓名</label><input class="input" id="f_p1n" value="${Utils.esc(s.p1Name||'')}" placeholder="如：父亲"></div>
+          <div><label class="label">电话</label><input class="input" id="f_p1p" value="${Utils.esc(s.p1Phone||'')}"></div>
+        </div>
+        <div class="drawer-sec-title" style="margin:6px 0 0">家长二（可选）</div>
+        <div class="grid grid-2">
+          <div><label class="label">姓名</label><input class="input" id="f_p2n" value="${Utils.esc(s.p2Name||'')}" placeholder="如：母亲"></div>
+          <div><label class="label">电话</label><input class="input" id="f_p2p" value="${Utils.esc(s.p2Phone||'')}"></div>
+        </div>
+        <div><label class="label">家庭住址</label><input class="input" id="f_address" value="${Utils.esc(s.address||'')}"></div>
+        <div class="grid grid-2">
+          <div><label class="label">小组</label><input class="input" type="number" min="1" id="f_group" value="${s.group||1}"></div>
+          <div><label class="label">标签（顿号分隔）</label><input class="input" id="f_tags" value="${Utils.esc(s.tags||'')}" placeholder="心理关注、特长生"></div>
+        </div>
+        <div><label class="label">备注</label><textarea class="textarea" id="f_note">${Utils.esc(s.note||'')}</textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       ${isNew?'':`<button class="btn btn-danger" onclick="Roster.del('${Utils.esc(s.id)}')">删除</button>`}
+       <button class="btn btn-primary" onclick="Roster.save('${Utils.esc(s.id)}',${isNew})">保存</button>`);
+  },
+  save(oldId,isNew){
+    const students=Store.get('students',[])||[];
+    const s={
+      id:document.getElementById('f_id').value.trim(),
+      name:document.getElementById('f_name').value.trim(),
+      gender:document.getElementById('f_gender').value,
+      birthDate:document.getElementById('f_birth').value,
+      p1Name:document.getElementById('f_p1n').value.trim(),
+      p1Phone:document.getElementById('f_p1p').value.trim(),
+      p2Name:document.getElementById('f_p2n').value.trim(),
+      p2Phone:document.getElementById('f_p2p').value.trim(),
+      address:document.getElementById('f_address').value.trim(),
+      group:+document.getElementById('f_group').value||1,
+      tags:document.getElementById('f_tags').value.trim(),
+      note:document.getElementById('f_note').value.trim()
+    };
+    if(!s.id||!s.name){Utils.toast('学号和姓名为必填项','error');return}
+    if(isNew&&students.some(x=>x.id===s.id)){Utils.toast('该学号已存在','error');return}
+    if(isNew)students.push(s);
+    else{
+      const idx=students.findIndex(x=>x.id===oldId);
+      if(idx<0){Utils.toast('未找到该学生','error');return}
+      students[idx]=s;
+    }
+    Store.set('students',students);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Utils.toast('已保存','success');
+  },
+  del(id){
+    const students=Store.get('students',[])||[];
+    const s=students.find(x=>x.id===id);
+    if(!s)return;
+    Utils.confirm('删除学生',
+      `确定删除 <b>${Utils.esc(s.name)}</b>（${Utils.esc(s.id)}）吗？<br><span class="text-xs">将同时清除其座位、班委职务与值日安排，成绩记录保留。</span>`,
+      `Roster.doDelete('${Utils.esc(id)}')`,'删除');
+  },
+  doDelete(id){
+    const students=Store.get('students',[])||[];
+    const s=students.find(x=>x.id===id);
+    if(!s)return;
+    Store.set('students',students.filter(x=>x.id!==id));
+    // 清理座位
+    const seating=Seating.get();
+    seating.layout=(seating.layout||[]).filter(l=>l.sid!==id);
+    Store.set('seating',seating);
+    // 清理班委
+    const committee=Store.get('committee',[])||[];
+    committee.forEach(cat=>(cat.roles||[]).forEach(r=>{if(r.student===s.name)r.student=''}));
+    Store.set('committee',committee);
+    // 清理值日
+    const duty=Duty.getData();
+    if(duty.weeks)Object.keys(duty.weeks).forEach(wk=>{
+      const grid=duty.weeks[wk];
+      Object.keys(grid).forEach(k=>{
+        const cell=grid[k];
+        if(cell&&Array.isArray(cell.students))cell.students=cell.students.filter(n=>n!==s.name);
+      });
+    });
+    Store.set('duty',duty);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();
+    if(App.current==='seating')Seating.render();
+    if(App.current==='duty')Duty.render();
+    Utils.toast(`已删除 ${s.name}`,'success');
+  },
+  exportCSV(){
+    const students=Store.get('students',[])||[];
+    if(!students.length){Utils.toast('暂无数据','error');return}
+    const headers=['id','name','gender','birthDate','p1Name','p1Phone','p2Name','p2Phone','address','group','tags','note'];
+    const cn={id:'学号',name:'姓名',gender:'性别',birthDate:'出生日期',p1Name:'家长1姓名',p1Phone:'家长1电话',p2Name:'家长2姓名',p2Phone:'家长2电话',address:'家庭住址',group:'小组',tags:'标签',note:'备注'};
+    let csv=headers.map(h=>cn[h]).join(',')+'\n';
+    students.forEach(s=>{csv+=headers.map(h=>Utils.csvEscape(s[h])).join(',')+'\n'});
+    Utils.downloadCSV(csv,'花名册_'+Utils.todayStr()+'.csv');
+    Utils.toast('花名册CSV已导出（Excel可直接打开）','success');
+  },
+  importCSV(input){
+    const f=input.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=e=>{
+      try{
+        const data=Utils.parseCSVWithHeader(e.target.result);
+        if(!data.length)throw new Error('文件为空');
+        const students=Store.get('students',[])||[];
+        let add=0,upd=0;
+        data.forEach(row=>{
+          const id=row['学号']||row['id']||row['ID']||'';
+          const name=row['姓名']||row['name']||'';
+          if(!name&&!id)return;
+          const s={
+            id:id||name,name,
+            gender:row['性别']||row['gender']||'男',
+            birthDate:row['出生日期']||row['birthDate']||'',
+            p1Name:row['家长1姓名']||row['家长姓名']||row['parentName']||'',
+            p1Phone:row['家长1电话']||row['联系电话']||row['parentPhone']||row['电话']||'',
+            p2Name:row['家长2姓名']||row['家长2']||'',
+            p2Phone:row['家长2电话']||'',
+            address:row['家庭住址']||row['address']||'',
+            group:+(row['小组']||row['group']||1),
+            tags:row['标签']||row['tags']||'',
+            note:row['备注']||row['note']||''
+          };
+          const idx=students.findIndex(x=>x.id===s.id);
+          if(idx>=0){students[idx]=s;upd++}
+          else{students.push(s);add++}
+        });
+        if(!add&&!upd)throw new Error('未识别到有效数据');
+        Store.set('students',students);
+        Utils.toast(`导入完成：新增${add}人，更新${upd}人`,'success');
+        this.render();
+      }catch(err){Utils.toast('导入失败：'+err.message,'error')}
+    };
+    r.readAsText(f,'utf-8');input.value='';
+  }
+};
+
+/* ================= 班委名单 ================= */
+const Committee={
+  CAT_ICONS:{
+    '班委':{icon:'<path d="m3 8 4-4 5 4 5-4 4 4-2 9H5z"/>',bg:'var(--primary-soft)',color:'var(--primary)'},
+    '课代表':{icon:'<path d="M4 19V5a2 2 0 0 1 2-2h13v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M19 3v16"/>',bg:'var(--blue-soft)',color:'var(--blue)'},
+    '组长':{icon:'<circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M16 11a2.5 2.5 0 1 0 0-5"/>',bg:'var(--amber-soft)',color:'var(--amber)'}
+  },
+  defaultIcon(){return{icon:'<circle cx="12" cy="12" r="4"/>',bg:'var(--purple-soft)',color:'var(--purple)'}},
+  render(){
+    const data=Store.get('committee',[])||[];
+    const el=document.getElementById('committeeContent');
+    if(!data.length||!data.some(c=>(c.roles||[]).length)){
+      el.innerHTML='<div class="empty-state">还没有班委职务，点击右上角「添加职务」开始</div>';return;
+    }
+    let html='';
+    data.forEach(cat=>{
+      if(!(cat.roles||[]).length)return;
+      const ic=this.CAT_ICONS[cat.cat]||this.defaultIcon();
+      html+=`<div class="committee-group">
+        <div class="card-title mb-3">
+          <span class="role-icon" style="width:28px;height:28px;border-radius:9px;background:${ic.bg};color:${ic.color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px">${ic.icon}</svg></span>
+          ${Utils.esc(cat.cat)} <span class="subtle">（${cat.roles.length}人）</span>
+        </div>
+        <div class="grid grid-2">`;
+      cat.roles.forEach((r,i)=>{
+        const globalIdx=data.findIndex(c=>c===cat);
+        html+=`<div class="committee-role">
+          <span class="role-icon" style="background:${ic.bg};color:${ic.color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ic.icon}</svg></span>
+          <div>
+            <div class="role-title">${Utils.esc(r.title)}</div>
+            <div class="role-duty">${Utils.esc(r.duty||'')}</div>
+          </div>
+          <div class="role-student">
+            ${r.student?`<div class="n">${Utils.esc(r.student)}</div>`:'<div class="text-xs text-faint">空缺</div>'}
+            <div class="flex gap-1" style="margin-top:5px;opacity:.75">
+              <button class="btn btn-ghost btn-sm" style="padding:2px 9px" onclick="Committee.editRole(${globalIdx},${i})">编辑</button>
+              <button class="btn btn-danger btn-sm" style="padding:2px 9px" onclick="Committee.delRole(${globalIdx},${i})">删除</button>
+            </div>
+          </div>
+        </div>`;
+      });
+      html+='</div></div>';
+    });
+    el.innerHTML=html;
+  },
+  editRole(catIdx,roleIdx){
+    const data=Store.get('committee',[])||[];
+    const isNew=catIdx<0;
+    const cats=data.map(c=>c.cat);
+    const r=isNew?{title:'',student:'',duty:''}:data[catIdx].roles[roleIdx];
+    Utils.modal(isNew?'添加职务':'编辑职务',`
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-2">
+          <div><label class="label">类别</label><select class="select" id="cb_cat">${cats.map(c=>`<option ${(!isNew&&c===data[catIdx].cat)?'selected':''}>${Utils.esc(c)}</option>`).join('')}<option value="__new__">＋ 新类别…</option></select></div>
+          <div><label class="label">新类别名（选「新类别」时填）</label><input class="input" id="cb_newcat" placeholder="如：社团负责人"></div>
+        </div>
+        <div class="grid grid-2">
+          <div><label class="label">职务名称</label><input class="input" id="cb_title" value="${Utils.esc(r.title)}" placeholder="如：班长"></div>
+          <div><label class="label">担任学生</label><input class="input" id="cb_student" value="${Utils.esc(r.student||'')}" placeholder="输入姓名/学号搜索"><div class="stu-suggest" id="cb_sug" style="display:none"></div></div>
+        </div>
+        <div><label class="label">核心职责</label><textarea class="textarea" id="cb_duty" placeholder="如：统筹班级日常事务">${Utils.esc(r.duty||'')}</textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Committee.saveRole(${catIdx},${roleIdx})">保存</button>`);
+    const inp=document.getElementById('cb_student');
+    inp.oninput=()=>Utils.stuSuggest('cb_student','cb_sug','Committee.pickStudent');
+  },
+  pickStudent(name){
+    document.getElementById('cb_student').value=name;
+    Utils.stuSuggestHide('cb_sug');
+  },
+  saveRole(catIdx,roleIdx){
+    const data=Store.get('committee',[])||[];
+    let cat=document.getElementById('cb_cat').value;
+    const newCat=document.getElementById('cb_newcat').value.trim();
+    if(cat==='__new__'){
+      if(!newCat){Utils.toast('请填写新类别名','error');return}
+      cat=newCat;
+    }
+    const title=document.getElementById('cb_title').value.trim();
+    const student=document.getElementById('cb_student').value.trim();
+    const duty=document.getElementById('cb_duty').value.trim();
+    if(!title){Utils.toast('请填写职务名称','error');return}
+    let group=data.find(c=>c.cat===cat);
+    if(!group){group={cat,roles:[]};data.push(group)}
+    const role={title,student,duty};
+    if(catIdx>=0&&data[catIdx].cat===cat){
+      if(roleIdx>=0)data[catIdx].roles[roleIdx]=role;
+      else data[catIdx].roles.push(role);
+    }else{
+      // 类别可能变化：从旧类别删除
+      if(catIdx>=0&&roleIdx>=0)data[catIdx].roles.splice(roleIdx,1);
+      group.roles.push(role);
+    }
+    Store.set('committee',data.filter(c=>(c.roles||[]).length||data.length===1));
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Utils.toast('职务已保存','success');
+  },
+  delRole(catIdx,roleIdx){
+    const data=Store.get('committee',[])||[];
+    if(!data[catIdx]||!data[catIdx].roles[roleIdx])return;
+    const r=data[catIdx].roles[roleIdx];
+    Utils.confirm('删除职务',`确定删除「${Utils.esc(r.title)}」这个职务吗？`,`Committee.doDelRole(${catIdx},${roleIdx})`);
+  },
+  doDelRole(catIdx,roleIdx){
+    const data=Store.get('committee',[])||[];
+    data[catIdx].roles.splice(roleIdx,1);
+    Store.set('committee',data);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Utils.toast('已删除','success');
+  }
+};
+
+/* ================= 家长联系方式 ================= */
+const Parents={
+  render(){
+    const students=Store.get('students',[])||[];
+    const roles=RoleHelper.map();
+    const search=(document.getElementById('parentSearch').value||'').toLowerCase();
+    const filtered=students.filter(s=>{
+      if(!search)return true;
+      return s.name.toLowerCase().includes(search)||
+        (s.p1Name||'').toLowerCase().includes(search)||(s.p2Name||'').toLowerCase().includes(search)||
+        (s.p1Phone||'').includes(search)||(s.p2Phone||'').includes(search);
+    });
+    const el=document.getElementById('parentsContent');
+    if(!filtered.length){el.innerHTML='<div class="empty-state">没有找到匹配的家长</div>';return}
+    let html='<div class="grid grid-2">';
+    filtered.forEach(s=>{
+      const color=Utils.avatarColor(s.name);
+      const role=roles[s.name];
+      const parentRow=(name,phone,label)=>{
+        if(!name&&!phone)return'';
+        return `<div class="parent-row">
+          <span class="roster-avatar" style="width:28px;height:28px;border-radius:9px;font-size:12px;background:${Utils.avatarColor(name||'家')}">${Utils.esc((name||'家')[0])}</span>
+          <div style="flex:1;min-width:0">
+            <div class="pn">${Utils.esc(name||'家长')} <span class="text-faint" style="font-size:10px">${label}</span></div>
+            <div class="pp">${Utils.esc(phone||'未录入电话')}</div>
+          </div>
+          <div class="contact-actions">
+            ${phone?`<button class="act-icon" onclick="Utils.copyText('${Utils.esc(phone)}')" title="复制号码"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg></button>`:''}
+          </div>
+        </div>`;
+      };
+      html+=`<div class="contact-card">
+        <div class="contact-head">
+          <div class="roster-avatar" style="background:${color}">${Utils.esc((s.name||'?')[0])}</div>
+          <div style="flex:1">
+            <div class="contact-name">${Utils.esc(s.name)} ${role?`<span class="pill pill-green" style="font-size:10px;padding:0 7px">${Utils.esc(role)}</span>`:''}</div>
+            <div class="text-xs text-faint">${Utils.esc(s.id)}</div>
+          </div>
+          <button class="act-icon" onclick="Utils.copyText('${Utils.esc(Utils.smsTemplate(s.name))}')" title="复制通知文案（可粘贴到微信/短信）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v-2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 11h8M8 15h5"/></svg>
+          </button>
+        </div>
+        ${parentRow(s.p1Name,s.p1Phone,'家长一')}
+        ${parentRow(s.p2Name,s.p2Phone,'家长二')}
+      </div>`;
+    });
+    html+='</div>';
+    el.innerHTML=html;
+  }
+};
+</script>

@@ -1,0 +1,681 @@
+
+/* ================= 课程表 ================= */
+const Schedule={
+  DAY_LABEL:{1:'周一',2:'周二',3:'周三',4:'周四',5:'周五',6:'周六',7:'周日'},
+  DAY_NAMES:{1:'周一',2:'周二',3:'周三',4:'周四',5:'周五',6:'周六',7:'周日'},
+  WD_PARSE:{'周一':1,'周二':2,'周三':3,'周四':4,'周五':5,'周六':6,'周日':7,'星期一':1,'星期二':2,'星期三':3,'星期四':4,'星期五':5,'星期六':6,'星期日':7,'星期天':7},
+  TYPE_META:{
+    class:{label:'上课'},
+    break:{label:'大课间',preset:{type:'break',name:'大课间',time:'10:00-10:30'}},
+    ceremony:{label:'升旗仪式',preset:{type:'ceremony',name:'升旗仪式',time:'07:50-08:10',days:[1]}},
+    meal:{label:'用餐',presets:[{type:'meal',name:'午餐',time:'12:10-13:00'},{type:'meal',name:'晚餐',time:'17:00-18:00'}]},
+    selfstudy:{label:'晚自习',preset:{type:'selfstudy',name:'晚自习',time:'18:40-20:30'}},
+    dorm:{label:'查寝',preset:{type:'dorm',name:'查寝',time:'21:30-22:00'}},
+    other:{label:'其他',preset:{type:'other',name:'自定义环节',time:''}}
+  },
+  currentClass:'',
+  periods(){return Store.get('schedulePeriods')||SampleData.DEFAULT_PERIODS},
+  setPeriods(p){Store.set('schedulePeriods',p)},
+  nextPeriodId(){return Math.max(0,...this.periods().map(p=>+p.id||0))+1},
+  getClasses(){return Store.get('scheduleClasses')||[]},
+  setClasses(a){Store.set('scheduleClasses',a)},
+  getSchedule(cn){return Store.get('schedule_'+(cn||this.currentClass))||[]},
+  setSchedule(arr,cn){Store.set('schedule_'+(cn||this.currentClass),arr)},
+  allClassSchedules(){
+    const out={};
+    this.getClasses().forEach(cn=>out[cn]=Store.get('schedule_'+cn)||[]);
+    return out;
+  },
+  specialNames(){
+    const set=['大课间','升旗仪式','午餐','晚餐','晚自习','查寝'];
+    this.periods().forEach(p=>{if(p.type!=='class')set.push(p.name)});
+    return set;
+  },
+  SUBJECT_COLORS:{
+    '语文':['#EDF2EE','#5B7065'],'数学':['#EAF0F4','#6A89A6'],'英语':['#F7EDF1','#B37F93'],
+    '物理':['#F5EFE2','#9B7F53'],'化学':['#F0EDF4','#8A7F98'],'生物':['#E8F0EA','#7E968A'],
+    '政治':['#F5EFE2','#9B7F53'],'历史':['#F7EDF1','#B37F93'],'地理':['#EAF0F4','#6A89A6'],
+    '体育':['#E8F0EA','#7E968A'],'音乐':['#F0EDF4','#8A7F98'],'美术':['#F7EDF1','#B37F93'],
+    '信息技术':['#EAF0F4','#6A89A6'],'书法':['#F5EFE2','#9B7F53'],'班会':['#EDF2EE','#5B7065'],
+    '自习':['#EBEEE9','#7F8C8D'],'阅读':['#F5EFE2','#9B7F53'],'劳动':['#E8F0EA','#7E968A'],'心理':['#F0EDF4','#8A7F98']
+  },
+  subjectColors(sub){
+    if(this.SUBJECT_COLORS[sub])return{bg:this.SUBJECT_COLORS[sub][0],color:this.SUBJECT_COLORS[sub][1]};
+    const pool=[['#EDF2EE','#5B7065'],['#EAF0F4','#6A89A6'],['#F5EFE2','#9B7F53'],['#F7EDF1','#B37F93'],['#F0EDF4','#8A7F98'],['#E8F0EA','#7E968A']];
+    let h=0;for(let i=0;i<sub.length;i++)h=sub.charCodeAt(i)+((h<<5)-h);
+    return{bg:pool[Math.abs(h)%pool.length][0],color:pool[Math.abs(h)%pool.length][1]};
+  },
+  /* 调休：今天按周几的课表（1..7），仅当天有效 */
+  effectiveDay(){
+    const adj=Store.get('scheduleAdjust');
+    if(adj&&adj.date===Utils.todayStr()&&adj.day>=1&&adj.day<=7)return adj.day;
+    const d=new Date().getDay();
+    return d===0?7:d;
+  },
+  currentPeriodId(){
+    const nowMin=new Date().getHours()*60+new Date().getMinutes();
+    for(const p of this.periods()){
+      const t=(p.time||'').split('-');
+      if(t.length!==2)continue;
+      const st=t[0].trim().split(':'),en=t[1].trim().split(':');
+      if(!st[0]||!en[0])continue;
+      const s=+st[0]*60+ +st[1],e2=+en[0]*60+ +en[1];
+      if(nowMin>=s&&nowMin<=e2)return p.id;
+    }
+    return -1;
+  },
+  render(){
+    const classes=this.getClasses();
+    if(!classes.length){this.setClasses(['班级1'])}
+    const cls=this.getClasses();
+    if(!this.currentClass||!cls.includes(this.currentClass))this.currentClass=cls[0];
+    this.renderTabs();
+    this.renderTable();
+  },
+  renderTabs(){
+    const classes=this.getClasses();
+    const esc=n=>n.replace(/'/g,"\\'");
+    let html='';
+    classes.forEach(cn=>{
+      const active=cn===this.currentClass;
+      html+=`<div class="class-tab ${active?'active':''}" onclick="Schedule.switchClass('${esc(cn)}')">
+        <span>${Utils.esc(cn)}</span>
+        ${active?`<span class="tab-close" title="重命名" onclick="event.stopPropagation();Schedule.renameClass('${esc(cn)}')" style="opacity:.75">✎</span>`:''}
+        ${classes.length>1?`<span class="tab-close" title="删除班级" onclick="event.stopPropagation();Schedule.removeClass('${esc(cn)}')">×</span>`:''}
+      </div>`;
+    });
+    html+=`<button class="class-tab-add" onclick="Schedule.addClass()">＋ 添加班级</button>`;
+    document.getElementById('classTabs').innerHTML=html;
+  },
+  switchClass(cn){
+    this.currentClass=cn;
+    this.renderTabs();this.renderTable();
+  },
+  addClass(){
+    const name=prompt('新班级名称（如：初三(3)班）：','');
+    if(!name)return;
+    const classes=this.getClasses();
+    if(classes.includes(name)){Utils.toast('该班级已存在','error');return}
+    classes.push(name);
+    this.setClasses(classes);
+    Store.set('schedule_'+name,[]);
+    this.currentClass=name;
+    this.render();
+    Dashboard.renderMyCourse();
+    Utils.toast('班级已添加','success');
+  },
+  renameClass(cn){
+    const name=prompt('重命名班级：',cn);
+    if(!name||name===cn)return;
+    const classes=this.getClasses();
+    if(classes.includes(name)){Utils.toast('该名称已存在','error');return}
+    const arr=this.getSchedule(cn);
+    Store.del('schedule_'+cn);
+    classes[classes.indexOf(cn)]=name;
+    this.setClasses(classes);
+    Store.set('schedule_'+name,arr);
+    if(this.currentClass===cn)this.currentClass=name;
+    this.render();Dashboard.renderMyCourse();
+    Utils.toast('已重命名','success');
+  },
+  removeClass(cn){
+    Utils.confirm('删除班级',`确定删除「${Utils.esc(cn)}」及其课表数据吗？`,`Schedule.doRemoveClass('${cn.replace(/'/g,"\\'")}')`);
+  },
+  doRemoveClass(cn){
+    const classes=this.getClasses();
+    if(classes.length<=1){Utils.toast('至少保留一个班级','error');return}
+    Store.del('schedule_'+cn);
+    this.setClasses(classes.filter(c=>c!==cn));
+    if(this.currentClass===cn)this.currentClass=this.getClasses()[0];
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Dashboard.renderMyCourse();
+    Utils.toast('班级已删除','success');
+  },
+  renderTable(){
+    const periods=this.periods();
+    const effDay=this.effectiveDay();
+    const curPid=this.currentPeriodId();
+    const adj=Store.get('scheduleAdjust');
+    const isAdj=adj&&adj.date===Utils.todayStr();
+    // 状态
+    const wd=Object.keys(this.DAY_LABEL).map(k=>+k);
+    let status=`${Utils.esc(this.currentClass)} · 今天${this.DAY_LABEL[effDay]}${isAdj?'（调休）':''}`;
+    const el=document.getElementById('scheduleStatus');
+    if(el)el.textContent=status;
+    const entries=this.getSchedule();
+    let html='<thead><tr><th style="min-width:84px">环节 / 时间</th>';
+    for(let d=1;d<=7;d++)html+=`<th class="${d===effDay?'today-col':''}">${this.DAY_LABEL[d]}</th>`;
+    html+='</tr></thead><tbody>';
+    periods.forEach(p=>{
+      if(p.type==='class'){
+        html+=`<tr><td class="sched-label"><div class="n">${Utils.esc(p.name)}</div><div class="t">${Utils.esc(p.time||'')}</div></td>`;
+        for(let d=1;d<=7;d++){
+          const e=entries.find(x=>x.day===d&&x.periodId===p.id);
+          if(e){
+            const c=this.subjectColors(e.subject);
+            const cur=d===effDay&&p.id===curPid;
+            html+=`<td class="sched-cell ${cur?'current':''}" onclick="Schedule.editCell(${d},${p.id})">
+              <div class="sched-subject" style="color:${c.color}">${Utils.esc(e.subject)}</div>
+              ${e.teacher?`<div class="sched-teacher">${Utils.esc(e.teacher)}</div>`:''}
+              ${e.room?`<div class="sched-room">${Utils.esc(e.room)}</div>`:''}
+            </td>`;
+          }else{
+            html+=`<td class="sched-cell sched-cell-empty" onclick="Schedule.editCell(${d},${p.id})"><span class="text-xs text-faint" style="opacity:.5">＋</span></td>`;
+          }
+        }
+        html+='</tr>';
+      }else{
+        html+=`<tr><td class="sched-label"><div class="n">${Utils.esc(p.name)}</div><div class="t">${Utils.esc(p.time||'')}</div></td>`;
+        for(let d=1;d<=7;d++){
+          const active=!(p.days&&p.days.length)||p.days.includes(d);
+          if(active){
+            html+=`<td class="sched-band band-${p.type}" onclick="Schedule.editPeriod(${p.id})">${Utils.esc(p.name)}<span class="bt">${Utils.esc(p.time||'')}</span></td>`;
+          }else{
+            html+=`<td class="sched-band sched-band-empty"></td>`;
+          }
+        }
+        html+='</tr>';
+      }
+    });
+    html+='</tbody>';
+    document.getElementById('schedTable').innerHTML=html;
+  },
+  /* ===== 课程编辑 ===== */
+  editCell(day,pid){
+    const entries=this.getSchedule();
+    const e=entries.find(x=>x.day===day&&x.periodId===pid)||{};
+    const classPeriods=this.periods().filter(p=>p.type==='class');
+    const subjects=[...new Set([...Object.keys(this.SUBJECT_COLORS),...Dashboard.allSubjects()])];
+    const esc=this.currentClass.replace(/'/g,"\\'");
+    Utils.modal(`${this.DAY_LABEL[day]} · 编辑课程`,`
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-2">
+          <div><label class="label">星期</label><select class="select" id="sc_day">${[1,2,3,4,5,6,7].map(d=>`<option value="${d}" ${d===day?'selected':''}>${this.DAY_LABEL[d]}</option>`).join('')}</select></div>
+          <div><label class="label">节次</label><select class="select" id="sc_period">${classPeriods.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${Utils.esc(p.name)} ${p.time?'('+p.time+')':''}</option>`).join('')}</select></div>
+        </div>
+        <div><label class="label">科目</label><input class="input" id="sc_subject" value="${Utils.esc(e.subject||'')}" list="scSubjList" placeholder="输入任意科目"><datalist id="scSubjList">${subjects.map(s=>`<option value="${Utils.esc(s)}">`).join('')}</datalist></div>
+        <div class="grid grid-2">
+          <div><label class="label">任课老师</label><input class="input" id="sc_teacher" value="${Utils.esc(e.teacher||'')}"></div>
+          <div><label class="label">教室</label><input class="input" id="sc_room" value="${Utils.esc(e.room||'')}" placeholder="如：A栋301"></div>
+        </div>
+        <div class="text-xs text-faint">科目录入后自动加入候选；时间跟随节次设置（在「管理节次」中调整）。</div>
+      </div>`,
+      `${e.subject?`<button class="btn btn-danger" onclick="Schedule.clearCell(${day},${pid})">清空</button>`:''}
+       <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Schedule.saveCell(${day},${pid})">保存</button>`);
+  },
+  saveCell(oldDay,oldPid){
+    const day=+document.getElementById('sc_day').value;
+    const pid=+document.getElementById('sc_period').value;
+    const subject=document.getElementById('sc_subject').value.trim();
+    if(!subject){Utils.toast('请填写科目','error');return}
+    const entries=this.getSchedule();
+    const idx=entries.findIndex(x=>x.day===oldDay&&x.periodId===oldPid);
+    if(idx>=0)entries.splice(idx,1);
+    const i2=entries.findIndex(x=>x.day===day&&x.periodId===pid);
+    const cell={day,periodId:pid,subject,teacher:document.getElementById('sc_teacher').value.trim(),room:document.getElementById('sc_room').value.trim()};
+    if(i2>=0)entries[i2]=cell;else entries.push(cell);
+    this.setSchedule(entries);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Dashboard.renderMyCourse();
+    Utils.toast('课程已保存','success');
+  },
+  clearCell(day,pid){
+    const entries=this.getSchedule().filter(x=>!(x.day===day&&x.periodId===pid));
+    this.setSchedule(entries);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Dashboard.renderMyCourse();
+    Utils.toast('已清空该课程','success');
+  },
+  /* ===== 节次（行）管理 ===== */
+  managePeriods(){
+    Utils.modal('管理节次与环节','<div id="pmBody"></div>',
+      `<button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">完成</button>`);
+    this._renderPM();
+  },
+  _renderPM(formType){
+    const periods=this.periods();
+    const typeLabel={class:'上课',break:'大课间',ceremony:'仪式',meal:'用餐',selfstudy:'自习',dorm:'查寝',other:'其他'};
+    let html='<div class="flex flex-col gap-2 mb-4">';
+    periods.forEach((p,i)=>{
+      const days=p.days&&p.days.length?p.days.map(d=>this.DAY_LABEL[d]).join('、'):'每天';
+      html+=`<div class="period-row">
+        <span class="pill ${p.type==='class'?'pill-green':'pill-blue'}" style="font-size:10px;padding:1px 8px">${typeLabel[p.type]||'其他'}</span>
+        <span class="pr-name">${Utils.esc(p.name)}</span>
+        <span class="pr-time">${Utils.esc(p.time||'未设时间')}</span>
+        ${p.type!=='class'?`<span class="text-xs text-faint">${p.days&&p.days.length?days:'每天'}</span>`:''}
+        <button class="pr-move" title="上移" onclick="Schedule.movePeriod(${p.id},-1)">↑</button>
+        <button class="pr-move" title="下移" onclick="Schedule.movePeriod(${p.id},1)">↓</button>
+        <button class="pr-move" title="编辑" onclick="Schedule.editPeriod(${p.id})">✎</button>
+        <button class="pr-del" title="删除" onclick="Schedule.delPeriod(${p.id})">✕</button>
+      </div>`;
+    });
+    html+='</div>';
+    if(formType){
+      // 添加表单
+      const preset={break:{type:'break',name:'大课间',time:'10:00-10:30'},ceremony:{type:'ceremony',name:'升旗仪式',time:'07:50-08:10',days:[1]},meal_lunch:{type:'meal',name:'午餐',time:'12:10-13:00'},meal_dinner:{type:'meal',name:'晚餐',time:'17:00-18:00'},selfstudy:{type:'selfstudy',name:'晚自习',time:'18:40-20:30'},dorm:{type:'dorm',name:'查寝',time:'21:30-22:00'},class:{type:'class',name:'第'+(periods.filter(p=>p.type==='class').length+1)+'节',time:''},other:{type:'other',name:'',time:''}}[formType]||{type:'other',name:'',time:''};
+      html+=`<div class="card" style="box-shadow:none;border:1.5px dashed var(--primary-line);padding:14px">
+        <div class="drawer-sec-title" style="margin-bottom:10px">添加：${typeLabel[preset.type]||'自定义'}</div>
+        <div class="grid grid-2 gap-3">
+          <div><label class="label">名称</label><input class="input" id="pm_name" value="${Utils.esc(preset.name)}" placeholder="如：第9节 / 眼保健操"></div>
+          <div><label class="label">时间（如 08:00-08:45）</label><input class="input" id="pm_time" value="${Utils.esc(preset.time||'')}" placeholder="08:00-08:45"></div>
+        </div>
+        ${preset.type!=='class'?`
+        <div class="mt-3"><label class="label">生效日期</label>
+          <div class="flex" style="flex-wrap:wrap;gap:6px">
+            ${[1,2,3,4,5,6,7].map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-2);cursor:pointer"><input type="checkbox" id="pm_day_${d}" ${(preset.days?preset.days.includes(d):true)?'checked':''} style="accent-color:var(--primary)">${this.DAY_LABEL[d]}</label>`).join('')}
+          </div>
+          <div class="text-xs text-faint mt-1">全不勾选 = 每天</div>
+        </div>`:''}
+        <div class="flex gap-2 mt-3">
+          <button class="btn btn-ghost btn-sm" onclick="Schedule._renderPM()">取消</button>
+          <button class="btn btn-primary btn-sm" onclick="Schedule.saveNewPeriod('${preset.type}')">添加到末尾</button>
+        </div>
+      </div>`;
+    }else{
+      html+=`<div class="drawer-sec-title" style="margin-bottom:10px">快速添加环节</div>
+        <div class="preset-chips">
+          <button class="preset-chip" onclick="Schedule._renderPM('class')">＋ 上课节次</button>
+          <button class="preset-chip" onclick="Schedule._renderPM('break')">＋ 大课间</button>
+          <button class="preset-chip" onclick="Schedule._renderPM('ceremony')">＋ 升旗仪式</button>
+          <button class="preset-chip" onclick="Schedule._renderPM('meal_lunch')">＋ 午餐</button>
+          <button class="preset-chip" onclick="Schedule._renderPM('meal_dinner')">＋ 晚餐</button>
+          <button class="preset-chip" onclick="Schedule._renderPM('selfstudy')">＋ 晚自习</button>
+          <button class="preset-chip" onclick="Schedule._renderPM('dorm')">＋ 查寝</button>
+          <button class="preset-chip" onclick="Schedule._renderPM('other')">＋ 自定义</button>
+        </div>`;
+    }
+    const el=document.getElementById('pmBody');
+    if(el)el.innerHTML=html;
+  },
+  saveNewPeriod(type){
+    const name=document.getElementById('pm_name').value.trim();
+    const time=document.getElementById('pm_time').value.trim();
+    if(!name){Utils.toast('请填写名称','error');return}
+    const p={id:this.nextPeriodId(),type,name,time};
+    if(type!=='class'){
+      p.days=[1,2,3,4,5,6,7].filter(d=>{const c=document.getElementById('pm_day_'+d);return c&&c.checked});
+    }
+    const periods=this.periods();
+    periods.push(p);
+    this.setPeriods(periods);
+    this._renderPM();
+    this.render();Dashboard.renderMyCourse();
+    Utils.toast('「'+name+'」已添加','success');
+  },
+  editPeriod(id){
+    const p=this.periods().find(x=>x.id===id);
+    if(!p)return;
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    const typeLabel={class:'上课',break:'大课间',ceremony:'仪式',meal:'用餐',selfstudy:'自习',dorm:'查寝',other:'其他'};
+    Utils.modal('编辑环节：'+p.name,`
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-2">
+          <div><label class="label">名称</label><input class="input" id="pe_name" value="${Utils.esc(p.name)}"></div>
+          <div><label class="label">时间</label><input class="input" id="pe_time" value="${Utils.esc(p.time||'')}" placeholder="08:00-08:45"></div>
+        </div>
+        <div><label class="label">类型</label><select class="select" id="pe_type">
+          ${Object.keys(typeLabel).map(t=>`<option value="${t}" ${t===p.type?'selected':''}>${typeLabel[t]}</option>`).join('')}
+        </select></div>
+        ${p.type!=='class'?`
+        <div><label class="label">生效日期（全不选=每天）</label>
+          <div class="flex" style="flex-wrap:wrap;gap:6px">
+            ${[1,2,3,4,5,6,7].map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-2);cursor:pointer"><input type="checkbox" id="pe_day_${d}" ${!(p.days&&p.days.length)||p.days.includes(d)?'checked':''} style="accent-color:var(--primary)">${this.DAY_LABEL[d]}</label>`).join('')}
+          </div>
+        </div>`:''}
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Schedule.savePeriodEdit(${p.id})">保存</button>`);
+  },
+  savePeriodEdit(id){
+    const periods=this.periods();
+    const p=periods.find(x=>x.id===id);
+    if(!p)return;
+    const wasClass=p.type==='class';
+    p.name=document.getElementById('pe_name').value.trim()||p.name;
+    p.time=document.getElementById('pe_time').value.trim();
+    p.type=document.getElementById('pe_type').value;
+    if(p.type!=='class'){
+      p.days=[1,2,3,4,5,6,7].filter(d=>{const c=document.getElementById('pe_day_'+d);return c&&c.checked});
+    }else delete p.days;
+    // 若从上课节次变为环节，清理引用该节次的课程
+    if(wasClass&&p.type!=='class'){
+      this.getClasses().forEach(cn=>{
+        const arr=this.getSchedule(cn).filter(e=>e.periodId!==id);
+        Store.set('schedule_'+cn,arr);
+      });
+    }
+    this.setPeriods(periods);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Dashboard.renderMyCourse();
+    Utils.toast('环节已更新','success');
+  },
+  delPeriod(id){
+    const p=this.periods().find(x=>x.id===id);
+    if(!p)return;
+    Utils.confirm('删除节次',`确定删除「${Utils.esc(p.name)}」吗？${p.type==='class'?'该节次的课程安排也会一并删除。':''}`,`Schedule.doDelPeriod(${id})`);
+  },
+  doDelPeriod(id){
+    const periods=this.periods().filter(p=>p.id!==id);
+    this.setPeriods(periods);
+    this.getClasses().forEach(cn=>{
+      const arr=this.getSchedule(cn).filter(e=>e.periodId!==id);
+      Store.set('schedule_'+cn,arr);
+    });
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this._renderPM();
+    this.render();Dashboard.renderMyCourse();
+    Utils.toast('已删除','success');
+  },
+  movePeriod(id,dir){
+    const periods=this.periods();
+    const i=periods.findIndex(p=>p.id===id);
+    const j=i+dir;
+    if(i<0||j<0||j>=periods.length)return;
+    [periods[i],periods[j]]=[periods[j],periods[i]];
+    this.setPeriods(periods);
+    this._renderPM();
+    this.render();
+  },
+  /* ===== 调休 ===== */
+  adjustModal(){
+    const adj=Store.get('scheduleAdjust');
+    const active=adj&&adj.date===Utils.todayStr();
+    Utils.modal('调休设置',`
+      <div class="text-sm text-muted mb-3">遇到调休/补课日，可指定今天按哪一天的课表上。仅今天有效，明天自动恢复。</div>
+      <div><label class="label">今天按哪天的课表</label>
+        <select class="select" id="adj_day">
+          ${[1,2,3,4,5,6,7].map(d=>`<option value="${d}" ${active&&adj.day===d?'selected':''}>${this.DAY_LABEL[d]}</option>`).join('')}
+        </select>
+      </div>`,
+      `${active?`<button class="btn btn-ghost" onclick="Schedule.clearAdjust()">取消调休</button>`:''}
+       <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">关闭</button>
+       <button class="btn btn-primary" onclick="Schedule.saveAdjust()">保存</button>`);
+  },
+  saveAdjust(){
+    const day=+((document.getElementById('adj_day')||{}).value||0);
+    if(!day){document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());return}
+    Store.set('scheduleAdjust',{date:Utils.todayStr(),day});
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Dashboard.render();
+    Utils.toast('已设置：今天按'+this.DAY_LABEL[day]+'的课表','success');
+  },
+  clearAdjust(){
+    Store.del('scheduleAdjust');
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Dashboard.render();
+    Utils.toast('已恢复按日历','success');
+  },
+  /* ===== CSV 导入导出 ===== */
+  exportCSV(){
+    const entries=this.getSchedule();
+    const periods=this.periods();
+    if(!entries.length&&!periods.some(p=>p.type!=='class')){Utils.toast('当前班级暂无课表','error');return}
+    let csv='星期,节次,科目,任课老师,教室,时间\n';
+    periods.filter(p=>p.type!=='class').forEach(p=>{
+      const days=p.days&&p.days.length?p.days.map(d=>this.DAY_LABEL[d]).join('、'):'每天';
+      csv+=days+',—,'+Utils.csvEscape(p.name)+',,,'+Utils.csvEscape(p.time||'')+'\n';
+    });
+    entries.forEach(e=>{
+      const p=periods.find(x=>x.id===e.periodId);
+      csv+=this.DAY_LABEL[e.day]+','+Utils.csvEscape(p?p.name:'')+','+Utils.csvEscape(e.subject)+','+Utils.csvEscape(e.teacher||'')+','+Utils.csvEscape(e.room||'')+','+Utils.csvEscape(p?(p.time||''):'')+'\n';
+    });
+    Utils.downloadCSV(csv,'课表_'+this.currentClass+'_'+Utils.todayStr()+'.csv');
+    Utils.toast('课表CSV已导出','success');
+  },
+  importCSV(input){
+    const f=input.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=e=>{
+      try{
+        const data=Utils.parseCSVWithHeader(e.target.result);
+        if(!data.length)throw new Error('文件为空');
+        const periods=this.periods();
+        const specials=this.specialNames();
+        let entries=this.getSchedule();
+        let addedPeriods=0,addedCells=0;
+        data.forEach(row=>{
+          const subject=(row['科目']||row['subject']||'').trim();
+          const time=(row['时间']||row['time']||'').trim();
+          const dayStr=(row['星期']||row['day']||'').trim();
+          // 特殊环节行
+          if(subject&&specials.includes(subject)){
+            let p=periods.find(x=>x.name===subject&&x.type!=='class');
+            if(!p){p={id:this.nextPeriodId()+addedPeriods,type:this._guessType(subject),name:subject,time};periods.push(p);addedPeriods++}
+            else if(time)p.time=time;
+            const dayNames=dayStr.split(/[、,，\s]+/).filter(Boolean);
+            if(dayStr&&dayStr!=='每天'){
+              p.days=dayNames.map(n=>this.WD_PARSE[n]).filter(v=>v);
+            }else if(dayStr==='每天')delete p.days;
+            return;
+          }
+          // 课程行
+          if(!subject)return;
+          const day=this.WD_PARSE[dayStr]||1;
+          const perName=(row['节次']||row['period']||'').trim();
+          let p=null;
+          if(perName){
+            p=periods.find(x=>x.type==='class'&&x.name===perName);
+            if(!p&&/^\d+$/.test(perName))p=periods.find(x=>x.type==='class'&&x.name==='第'+perName+'节');
+          }
+          if(!p&&time)p=periods.find(x=>x.type==='class'&&x.time===time);
+          if(!p){
+            const name=/^\d+$/.test(perName)?'第'+perName+'节':(perName||'第'+(periods.filter(x=>x.type==='class').length+1)+'节');
+            p={id:this.nextPeriodId()+addedPeriods,type:'class',name,time};
+            periods.push(p);addedPeriods++;
+          }
+          const cell={day,periodId:p.id,subject,
+            teacher:(row['任课老师']||row['teacher']||'').trim(),
+            room:(row['教室']||row['room']||'').trim()};
+          const i=entries.findIndex(x=>x.day===day&&x.periodId===p.id);
+          if(i>=0)entries[i]=cell;else entries.push(cell);
+          addedCells++;
+        });
+        if(addedPeriods)this.setPeriods(periods);
+        this.setSchedule(entries);
+        Utils.toast(`导入完成：${addedCells}节课${addedPeriods?'，新增'+addedPeriods+'个环节':''}`,'success');
+        this.render();Dashboard.renderMyCourse();
+      }catch(err){Utils.toast('导入失败：'+err.message,'error')}
+    };
+    r.readAsText(f,'utf-8');input.value='';
+  },
+  _guessType(name){
+    if(/课间|操/.test(name))return'break';
+    if(/升旗|仪式|典礼/.test(name))return'ceremony';
+    if(/餐|饭/.test(name))return'meal';
+    if(/自习/.test(name))return'selfstudy';
+    if(/查寝|就寝/.test(name))return'dorm';
+    return'other';
+  }
+};
+
+/* ================= 待办便签 ================= */
+const Todos={
+  render(){
+    const todos=Store.get('todos',[])||[];
+    const today=Utils.todayStr();
+    const order={urgent:0,important:1,normal:2};
+    const sorted=[...todos].sort((a,b)=>{
+      if(a.done!==b.done)return a.done?1:-1;
+      const ao=order[a.priority]||2,bo=order[b.priority]||2;
+      if(ao!==bo)return ao-bo;
+      return (a.due||'')<(b.due||'')?-1:1;
+    });
+    const el=document.getElementById('todoList');
+    if(!sorted.length){el.innerHTML='<div class="empty-state">暂无待办，添加一条吧</div>';return}
+    const pmap={urgent:['pill-red','紧急'],important:['pill-amber','重要'],normal:['pill-gray','普通']};
+    let html='';
+    sorted.forEach(t=>{
+      const overdue=!t.done&&t.due&&t.due<today;
+      const p=pmap[t.priority]||pmap.normal;
+      html+=`<div class="task-item ${t.done?'task-done':''} ${overdue?'task-overdue':''}">
+        <button class="task-check ${t.done?'done':''}" onclick="Todos.toggle('${t.id}')"></button>
+        <div class="task-text">${Utils.esc(t.text)}</div>
+        <span class="pill ${p[0]}" style="font-size:10px;padding:1px 7px">${p[1]}</span>
+        ${t.due?`<span class="text-xs text-faint" style="flex-shrink:0">${t.due.slice(5)}</span>`:''}
+        <button class="task-del" onclick="Todos.del('${t.id}')">✕</button>
+      </div>`;
+    });
+    const doneCnt=todos.filter(t=>t.done).length;
+    if(doneCnt)html+=`<button class="btn btn-ghost btn-sm mt-3" onclick="Todos.clearDone()">清除已完成的 ${doneCnt} 项</button>`;
+    el.innerHTML=html;
+  },
+  add(){
+    const text=document.getElementById('todoInput').value.trim();
+    if(!text){Utils.toast('请填写待办内容','error');return}
+    const todos=Store.get('todos',[])||[];
+    todos.push({id:'t'+Date.now(),text,done:false,
+      due:document.getElementById('todoDate').value||'',
+      priority:document.getElementById('todoPriority').value});
+    Store.set('todos',todos);
+    document.getElementById('todoInput').value='';
+    this.render();Dashboard.renderTodayTasks();
+    Utils.toast('待办已添加','success');
+  },
+  quickAddModal(){
+    Utils.modal('添加待办',`
+      <div class="flex flex-col gap-3">
+        <div><label class="label">内容</label><input class="input" id="qa_text" placeholder="要做什么？"></div>
+        <div class="grid grid-2">
+          <div><label class="label">截止日期</label><input class="input" type="date" id="qa_date" value="${Utils.todayStr()}"></div>
+          <div><label class="label">优先级</label><select class="select" id="qa_priority"><option value="normal">普通</option><option value="important">重要</option><option value="urgent">紧急</option></select></div>
+        </div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Todos.quickSave()">添加</button>`);
+  },
+  quickSave(){
+    const text=document.getElementById('qa_text').value.trim();
+    if(!text){Utils.toast('请填写内容','error');return}
+    const todos=Store.get('todos',[])||[];
+    todos.push({id:'t'+Date.now(),text,done:false,
+      due:document.getElementById('qa_date').value,
+      priority:document.getElementById('qa_priority').value});
+    Store.set('todos',todos);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.render();Dashboard.renderTodayTasks();
+    Utils.toast('待办已添加','success');
+  },
+  toggle(id){
+    const todos=Store.get('todos',[])||[];
+    const t=todos.find(x=>x.id===id);
+    if(!t)return;
+    t.done=!t.done;
+    Store.set('todos',todos);
+    this.render();Dashboard.renderTodayTasks();
+  },
+  del(id){
+    Store.set('todos',(Store.get('todos',[])||[]).filter(t=>t.id!==id));
+    this.render();Dashboard.renderTodayTasks();
+  },
+  clearDone(){
+    Store.set('todos',(Store.get('todos',[])||[]).filter(t=>!t.done));
+    this.render();
+  },
+  saveNotes(v){Store.set('notes',v)}
+};
+
+/* ================= 应用入口 ================= */
+const App={
+  current:'dashboard',
+  PAGES:{dashboard:Dashboard,seating:Seating,duty:Duty,grades:Grades,roster:Roster,committee:Committee,parents:Parents,schedule:Schedule,todos:Todos},
+  TITLES:{dashboard:'工作台',seating:'座次表',duty:'值日表',grades:'成绩分析',roster:'花名册',committee:'班委名单',parents:'家长联系',schedule:'课程表',todos:'待办便签'},
+  go(page){
+    this.current=page;
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    const el=document.getElementById('page-'+page);
+    if(el)el.classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
+    document.getElementById('topbarTitle').innerHTML=this.TITLES[page]+' <span class="top-sub">'+this._dateStr()+'</span>';
+    const obj=this.PAGES[page];
+    if(obj&&obj.render)try{obj.render()}catch(err){console.error(err)}
+    this.toggleSidebar(false);
+  },
+  _dateStr(){
+    const d=new Date();
+    return (d.getMonth()+1)+'月'+d.getDate()+'日 · 周'+['日','一','二','三','四','五','六'][d.getDay()];
+  },
+  toggleSidebar(open){
+    const sb=document.getElementById('sidebar');
+    const bd=document.getElementById('sidebarBackdrop');
+    const isOpen=open===undefined?!sb.classList.contains('open'):open;
+    sb.classList.toggle('open',isOpen);
+    bd.classList.toggle('show',isOpen);
+  },
+  openDrawer(){
+    document.getElementById('settingsDrawer').classList.add('open');
+    document.getElementById('drawerBackdrop').classList.add('show');
+    const sel=document.getElementById('mySubjectDrawer');
+    const s=document.getElementById('mySubjectSel');
+    if(sel&&s)sel.innerHTML=s.innerHTML;
+    Dashboard.renderMyCourse();
+  },
+  closeDrawer(){
+    document.getElementById('settingsDrawer').classList.remove('open');
+    document.getElementById('drawerBackdrop').classList.remove('show');
+  },
+  toggleTheme(){
+    const cur=document.documentElement.getAttribute('data-theme')||'light';
+    const next=cur==='light'?'dark':'light';
+    document.documentElement.setAttribute('data-theme',next);
+    Store.set('theme',next);
+    document.querySelector('meta[name="theme-color"]').setAttribute('content',next==='dark'?'#151815':'#F7F8F6');
+  },
+  exportBackup(){
+    const data=Store.exportAll();
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    const d=new Date();
+    a.download=`班主任工作台备份_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    Utils.toast('备份已导出，可通过微信/网盘传到其他设备','success');
+  },
+  importBackup(input){
+    const f=input.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=e=>{
+      try{
+        const obj=JSON.parse(e.target.result);
+        Store.importAll(obj);
+        Utils.toast('备份已恢复，即将刷新…','success');
+        setTimeout(()=>location.reload(),800);
+      }catch(err){Utils.toast('恢复失败：'+err.message,'error')}
+    };
+    r.readAsText(f,'utf-8');input.value='';
+  },
+  loadSample(){
+    Utils.confirm('加载示例数据','将清空当前数据并载入一套完整示例（30名学生、双班级课表等），确定继续？','App._doLoadSample()','载入');
+  },
+  _doLoadSample(){
+    Store.clearAll();
+    Store.del('inited');
+    location.reload();
+  },
+  clearAllData(){
+    Utils.confirm('清空全部数据','将删除本机浏览器中保存的全部数据（不影响已导出的备份文件）。建议先导出备份。确定继续？','App._clearStep2()','继续');
+  },
+  _clearStep2(){
+    Utils.confirm('再次确认','清空后工作台将变为空白，此操作不可撤销。真的要清空吗？','App._doClearAll()','确认清空');
+  },
+  _doClearAll(){
+    Store.clearAll();
+    Store.set('inited',true);
+    location.reload();
+  },
+  init(){
+    SampleData.migrate();
+    SampleData.load();
+    const theme=Store.get('theme','light');
+    document.documentElement.setAttribute('data-theme',theme);
+    document.getElementById('todoDate').value=Utils.todayStr();
+    document.getElementById('notesArea').value=Store.get('notes','');
+    this.go('dashboard');
+    setInterval(()=>{
+      if(App.current==='dashboard')Dashboard.renderMyCourse();
+      else if(App.current==='schedule')Schedule.render();
+    },60000);
+  }
+};
+document.addEventListener('DOMContentLoaded',()=>App.init());

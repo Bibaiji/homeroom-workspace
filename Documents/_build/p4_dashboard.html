@@ -1,0 +1,628 @@
+<script>
+/* ================= 工作台 ================= */
+const Dashboard={
+  _attDraft:{},
+  render(){
+    const now=new Date();
+    const h=now.getHours();
+    const greet=h<6?'夜深了':h<9?'早上好':h<12?'上午好':h<14?'中午好':h<18?'下午好':'晚上好';
+    document.getElementById('dashGreeting').textContent=greet+'，老师';
+    const wd=['日','一','二','三','四','五','六'][now.getDay()];
+    document.getElementById('dashDate').textContent=(now.getMonth()+1)+'月'+now.getDate()+'日 · 星期'+wd;
+    const adj=Store.get('scheduleAdjust');
+    const chip=document.getElementById('adjChip');
+    if(adj&&adj.date===Utils.todayStr()){
+      chip.style.display='';chip.textContent='调休：今天按'+Schedule.DAY_NAMES[adj.day]+'的课表';
+    }else chip.style.display='none';
+    this.renderMyCourse();
+    this.renderTodayTasks();
+    this.renderAttendance();
+    this.renderDiscipline();
+    this.renderHomework();
+    this.renderPatrol();
+    this.renderMeetings();
+    this.renderComms();
+    this.renderGrowth();
+    this.renderActivities();
+  },
+
+  /* ===== 我的今日课程（按学科聚合所有班级） ===== */
+  allSubjects(){
+    const set=[];
+    (Schedule.getClasses()||[]).forEach(cn=>{
+      (Store.get('schedule_'+cn)||[]).forEach(e=>{if(e.subject&&!set.includes(e.subject))set.push(e.subject)});
+    });
+    return set;
+  },
+  setMySubject(v){
+    Store.set('mySubject',v);
+    this.renderMyCourse();
+    const s1=document.getElementById('mySubjectSel');if(s1)s1.value=v;
+    const s2=document.getElementById('mySubjectDrawer');if(s2)s2.value=v;
+  },
+  renderMyCourse(){
+    const sel=document.getElementById('mySubjectSel');
+    const drawerSel=document.getElementById('mySubjectDrawer');
+    const subjects=this.allSubjects();
+    const current=Store.get('mySubject','全部');
+    const opts='<option value="全部">全部学科</option>'+subjects.map(s=>`<option value="${Utils.esc(s)}">${Utils.esc(s)}</option>`).join('');
+    if(sel){sel.innerHTML=opts;sel.value=subjects.includes(current)?current:'全部'}
+    if(drawerSel){drawerSel.innerHTML=opts;drawerSel.value=subjects.includes(current)?current:'全部'}
+    const subj=subjects.includes(current)?current:'全部';
+    const cont=document.getElementById('todayCourseBody');
+    const classes=Schedule.getClasses()||[];
+    const periods=(Schedule.periods()||[]).filter(p=>p.type==='class');
+    if(!classes.length||!periods.length){
+      cont.innerHTML='<div class="empty-state">还没有班级课表，去「课程表」页创建吧</div>';return;
+    }
+    const effDay=Schedule.effectiveDay();
+    const items=[];
+    classes.forEach(cn=>{
+      (Store.get('schedule_'+cn)||[]).forEach(e=>{
+        if(e.day!==effDay)return;
+        if(subj!=='全部'&&e.subject!==subj)return;
+        const pi=periods.findIndex(p=>p.id===e.periodId);
+        if(pi<0)return;
+        items.push({cn,e,pi,period:periods[pi]});
+      });
+    });
+    items.sort((a,b)=>a.pi-b.pi);
+    if(!items.length){
+      cont.innerHTML=`<div class="empty-state">${subj==='全部'?'今天没有课，好好休息 🍃':'今天没有'+Utils.esc(subj)+'课'}</div>`;return;
+    }
+    const nowMin=new Date().getHours()*60+new Date().getMinutes();
+    let html='';
+    items.forEach(it=>{
+      const t=(it.period.time||'').split('-');
+      let state='';
+      if(t.length===2){
+        const st=t[0].trim().split(':'),en=t[1].trim().split(':');
+        const s=+st[0]*60+ +st[1],e2=+en[0]*60+ +en[1];
+        if(nowMin>=s&&nowMin<=e2)state='current';
+        else if(nowMin>e2)state='past';
+      }
+      const c=Schedule.subjectColors(it.e.subject);
+      html+=`<div class="mycourse-item ${state}">
+        <div class="mycourse-time"><div class="t">${Utils.esc(it.period.time||'')}</div><div class="p">${Utils.esc(it.period.name)}</div></div>
+        <div class="mycourse-main">
+          <div class="cls">${Utils.esc(it.e.subject)} · ${Utils.esc(it.cn)}</div>
+          <div class="meta">${it.e.room?Utils.esc(it.e.room):''}${it.e.teacher&&it.e.room?' · ':''}${it.e.teacher?Utils.esc(it.e.teacher)+' 老师':''}</div>
+        </div>
+        ${state==='current'?'<span class="pill pill-green"><span class="dot-pulse" style="width:6px;height:6px"></span>进行中</span>':''}
+      </div>`;
+    });
+    cont.innerHTML=html;
+  },
+
+  /* ===== 今天要处理 ===== */
+  renderTodayTasks(){
+    const todos=Store.get('todos',[])||[];
+    const today=Utils.todayStr();
+    const undone=todos.filter(t=>!t.done).sort((a,b)=>{
+      const order={urgent:0,important:1,normal:2};
+      if((a.due||'') !== (b.due||''))return (a.due||'')<(b.due||'')?-1:1;
+      return (order[a.priority]||2)-(order[b.priority]||2);
+    });
+    const cont=document.getElementById('todayTasks');
+    if(!undone.length){cont.innerHTML='<div class="text-sm text-faint" style="padding:8px 0">全部处理完毕，很棒 👌</div>';return}
+    let html='';
+    undone.forEach(t=>{
+      const overdue=t.due&&t.due<today;
+      const pmap={urgent:['pill-red','紧急'],important:['pill-amber','重要'],normal:['pill-gray','普通']};
+      const p=pmap[t.priority]||pmap.normal;
+      html+=`<div class="task-item ${overdue?'task-overdue':''}">
+        <button class="task-check" onclick="Todos.toggle('${t.id}')"></button>
+        <div class="task-text">${Utils.esc(t.text)} ${overdue?'<span class="pill pill-red" style="font-size:10px;padding:1px 7px">逾期</span>':''}</div>
+        <span class="pill ${p[0]}" style="font-size:10px;padding:1px 7px">${p[1]}</span>
+        ${t.due?`<span class="text-xs text-faint">${t.due.slice(5)}</span>`:''}
+      </div>`;
+    });
+    cont.innerHTML=html;
+  },
+
+  /* ===== 考勤（一天多场次） ===== */
+  attSessions(){const s=Store.get('attSessions');return (Array.isArray(s)&&s.length)?s:['早读']},
+  _attSession:null,
+  _attDraft:{},
+  renderAttendance(){
+    const students=Store.get('students',[])||[];
+    const total=students.length;
+    const att=Store.get('attendance',{});
+    const isToday=att.date===Utils.todayStr();
+    const sess=this.attSessions();
+    if(!sess.includes(this._attSession))this._attSession=sess[0];
+    const chips=sess.map(s=>{
+      const recorded=isToday&&att.data&&Array.isArray(att.data[s]);
+      return `<button class="att-chip ${s===this._attSession?'active':''}" onclick="Dashboard._attPick('${Utils.q(s)}')">${Utils.esc(s)}<span class="att-dot ${recorded?'done':''}"></span></button>`;
+    }).join('');
+    const exc=(isToday&&att.data)?(att.data[this._attSession]||[]):[];
+    const cnt=st=>exc.filter(r=>r.status===st).length;
+    const names=st=>exc.filter(r=>r.status===st).map(r=>Utils.esc(r.name));
+    const sec=(title,arr,cls)=>arr.length?`<div class="text-xs mt-2" style="line-height:2"><span style="color:var(--text-3)">${title}</span> ${arr.map(n=>`<span class="pill ${cls}" style="font-size:10.5px;padding:1px 8px">${n}</span>`).join(' ')}</div>`:'';
+    let hint='';
+    if(!total)hint='请先在花名册添加学生';
+    else if(!isToday||!att.data)hint='今天还没记录，点击「标记」开始考勤';
+    else if(!Array.isArray(att.data[this._attSession]))hint='本场次还没记录，点击「标记」';
+    else if(!exc.length)hint='本场次全员出勤 👍';
+    document.getElementById('attBody').innerHTML=`
+      <div class="att-chips">${chips}</div>
+      <div class="mod-stats">
+        <div class="mod-stat"><div class="v text-primary">${Math.max(0,total-exc.length)}</div><div class="l">出勤</div></div>
+        <div class="mod-stat"><div class="v text-danger">${cnt('late')}</div><div class="l">迟到</div></div>
+        <div class="mod-stat"><div class="v" style="color:var(--amber)">${cnt('leave')}</div><div class="l">请假</div></div>
+        <div class="mod-stat"><div class="v text-muted">${cnt('absent')}</div><div class="l">缺勤</div></div>
+      </div>
+      ${sec('请假：',names('leave'),'pill-amber')}
+      ${sec('缺勤：',names('absent'),'pill-red')}
+      ${sec('迟到：',names('late'),'pill-red')}
+      ${hint?`<div class="text-xs text-faint">${hint}</div>`:''}`;
+  },
+  _attPick(s){this._attSession=s;this.renderAttendance()},
+  attendanceModal(session){
+    const students=Store.get('students',[])||[];
+    if(!students.length){Utils.toast('请先在花名册添加学生','error');return}
+    const sName=session||this._attSession||this.attSessions()[0];
+    this._attSession=sName;
+    const att=Store.get('attendance',{});
+    this._attDraft={};
+    if(att.date===Utils.todayStr()&&att.data&&Array.isArray(att.data[sName])){
+      att.data[sName].forEach(r=>{if(r.status&&r.status!=='present')this._attDraft[r.sid]=r.status});
+    }
+    Utils.modal('考勤 · '+Utils.esc(sName),'<div id="attMark"></div>',
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.saveAttendance('${Utils.q(sName)}')">保存考勤</button>`);
+    this._renderAttMark();
+  },
+  _renderAttMark(){
+    const students=Store.get('students',[])||[];
+    let html=`
+      <button class="btn btn-soft w-full" style="justify-content:center;padding:11px;font-size:14px" onclick="Dashboard.saveAllPresent('${Utils.q(this._attSession)}')">✔ 全员出勤，一键完成</button>
+      <div class="att-or">有个别异常？点名标记（没点到的都算出勤）</div>
+      <input class="input mb-2" placeholder="搜索学生…" oninput="Dashboard._attFilter(this.value)">
+      <div class="att-summary" id="attSummary"></div>`;
+    students.forEach(s=>{html+=this._attRow(s)});
+    const el=document.getElementById('attMark');
+    if(el)el.innerHTML=html;
+    this._updateAttSummary();
+  },
+  _attRow(s){
+    const st=this._attDraft[s.id]||'present';
+    const pill={present:['pill-green','出勤'],late:['pill-red','迟到'],leave:['pill-amber','请假'],absent:['pill-gray','缺勤']}[st];
+    const mk=(v,label,cls)=>`<button class="att-opt ${st===v?'on '+cls:''}" onclick="Dashboard._attToggle('${s.id}','${v}')">${label}</button>`;
+    return `<div class="att-row" id="attRow_${s.id}">
+      <span class="text-sm font-semi" style="flex:1;min-width:0">${Utils.esc(s.name)}</span>
+      <span class="pill ${pill[0]}" style="font-size:10.5px">${pill[1]}</span>
+      <span class="att-opts">${mk('leave','请假','am')}${mk('absent','缺勤','gy')}${mk('late','迟到','rd')}</span>
+    </div>`;
+  },
+  _attToggle(sid,v){
+    if(this._attDraft[sid]===v)delete this._attDraft[sid];
+    else this._attDraft[sid]=v;
+    const s=(Store.get('students',[])||[]).find(x=>x.id===sid);
+    const row=document.getElementById('attRow_'+sid);
+    if(row&&s)row.outerHTML=this._attRow(s);
+    this._updateAttSummary();
+  },
+  _attFilter(v){
+    const f=(v||'').toLowerCase();
+    (Store.get('students',[])||[]).forEach(s=>{
+      const el=document.getElementById('attRow_'+s.id);
+      if(el)el.style.display=(!f||s.name.toLowerCase().includes(f)||String(s.id).includes(f))?'':'none';
+    });
+  },
+  _updateAttSummary(){
+    const students=Store.get('students',[])||[];
+    const cnt=st=>Object.values(this._attDraft).filter(x=>x===st).length;
+    const excN=Object.keys(this._attDraft).length;
+    const el=document.getElementById('attSummary');
+    if(el)el.innerHTML=`已标异常 <b style="color:var(--danger)">${excN}</b> 人（请假 ${cnt('leave')} · 缺勤 ${cnt('absent')} · 迟到 ${cnt('late')}），其余 <b>${students.length-excN}</b> 人按出勤`;
+  },
+  _writeAttendance(session,exc){
+    const today=Utils.todayStr();
+    const att=Store.get('attendance',{});
+    const data=(att.date===today&&att.data)?att.data:{};
+    data[session]=exc;
+    Store.set('attendance',{date:today,data});
+    this._attSession=session;
+  },
+  saveAttendance(session){
+    const students=Store.get('students',[])||[];
+    const exc=students.filter(s=>this._attDraft[s.id]).map(s=>({sid:s.id,name:s.name,status:this._attDraft[s.id]}));
+    this._writeAttendance(session,exc);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderAttendance();
+    Utils.toast(exc.length?('考勤已保存：异常 '+exc.length+' 人'):'考勤已保存：全员出勤','success');
+  },
+  saveAllPresent(session){
+    this._writeAttendance(session,[]);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderAttendance();
+    Utils.toast('已记录：全员出勤','success');
+  },
+  /* ===== 考勤场次管理 ===== */
+  attSessionsModal(){
+    Utils.modal('考勤场次设置','<div id="attsBody"></div>',
+      `<button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">完成</button>`);
+    this._renderSessions();
+  },
+  _renderSessions(){
+    const sess=this.attSessions();
+    let html='<div class="text-xs text-faint mb-2">一天可以记多次考勤（如早读、午休点名、晚自习），每场单独记录、互不影响。</div><div class="flex flex-col gap-2 mb-3">';
+    sess.forEach((s,i)=>{
+      html+=`<div class="period-row"><span class="pr-name">${Utils.esc(s)}</span>
+        <button class="pr-move" title="重命名" onclick="Dashboard.renameAttSession(${i})">✎</button>
+        <button class="pr-del" title="删除" onclick="Dashboard.delAttSession(${i})">✕</button></div>`;
+    });
+    html+=`</div>
+      <div class="grid grid-2 gap-2" style="align-items:end">
+        <div><label class="label">新场次名称</label><input class="input" id="atts_new" placeholder="如：晚自习点名" onkeydown="if(event.key==='Enter')Dashboard.addAttSession()"></div>
+        <button class="btn btn-primary" onclick="Dashboard.addAttSession()">＋ 添加</button>
+      </div>`;
+    const el=document.getElementById('attsBody');
+    if(el)el.innerHTML=html;
+  },
+  addAttSession(){
+    const name=((document.getElementById('atts_new')||{}).value||'').trim();
+    if(!name){Utils.toast('请填写场次名称','error');return}
+    const sess=this.attSessions();
+    if(sess.includes(name)){Utils.toast('该场次已存在','error');return}
+    sess.push(name);
+    Store.set('attSessions',sess);
+    this._attSession=name;
+    this._renderSessions();
+    this.renderAttendance();
+    Utils.toast('场次「'+name+'」已添加','success');
+  },
+  renameAttSession(i){
+    const sess=this.attSessions();
+    const old=sess[i];
+    const name=prompt('重命名场次：',old);
+    if(!name||name===old)return;
+    if(sess.includes(name)){Utils.toast('该名称已存在','error');return}
+    sess[i]=name;
+    Store.set('attSessions',sess);
+    const att=Store.get('attendance',{});
+    if(att.date===Utils.todayStr()&&att.data&&att.data[old]){
+      att.data[name]=att.data[old];delete att.data[old];
+      Store.set('attendance',att);
+    }
+    if(this._attSession===old)this._attSession=name;
+    this._renderSessions();
+    this.renderAttendance();
+    Utils.toast('已重命名','success');
+  },
+  delAttSession(i){
+    const sess=this.attSessions();
+    if(sess.length<=1){Utils.toast('至少保留一个场次','error');return}
+    const name=sess[i];
+    Utils.confirm('删除场次','删除「'+Utils.esc(name)+'」后，今天该场的考勤记录也会一并删除。',`Dashboard.doDelAttSession(${i})`);
+  },
+  doDelAttSession(i){
+    const sess=this.attSessions();
+    const name=sess[i];
+    const left=sess.filter((_,j)=>j!==i);
+    Store.set('attSessions',left);
+    const att=Store.get('attendance',{});
+    if(att.date===Utils.todayStr()&&att.data&&att.data[name]){
+      delete att.data[name];
+      Store.set('attendance',att);
+    }
+    if(this._attSession===name)this._attSession=left[0];
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.attSessionsModal();
+    this.renderAttendance();
+    Utils.toast('场次已删除','success');
+  },
+
+  /* ===== 课堂纪律 ===== */
+  renderDiscipline(){
+    const d=Store.get('discipline',{});
+    let html='';
+    if(d.praises&&d.praises.length){
+      html+='<div class="text-xs font-semi mb-2" style="color:var(--primary)">本周表扬</div><div class="flex" style="flex-wrap:wrap;gap:6px">'+
+        d.praises.map(n=>`<span class="pill pill-green">${Utils.esc(n)}</span>`).join('')+'</div>';
+    }
+    if(d.focus&&d.focus.length){
+      html+='<div class="text-xs font-semi mt-3 mb-2" style="color:var(--amber)">重点关注</div><div class="flex" style="flex-wrap:wrap;gap:6px">'+
+        d.focus.map(n=>`<span class="pill pill-amber">${Utils.esc(n)}</span>`).join('')+'</div>';
+    }
+    if(d.records&&d.records.length){
+      html+=`<div class="mini-list mt-3">`+d.records.slice(0,3).map(r=>
+        `<div class="mini-list-item"><span>${Utils.esc(r.name)}：${Utils.esc(r.desc)}</span><span class="when">${Utils.esc(r.date||'')}</span></div>`).join('')+'</div>';
+    }
+    document.getElementById('discBody').innerHTML=html||'<div class="text-xs text-faint">本周暂无记录</div>';
+  },
+  disciplineModal(){
+    Utils.modal('纪律登记',`
+      <div class="flex flex-col gap-3">
+        <div><label class="label">类型</label>
+          <select class="select" id="dc_type"><option value="praise">表扬</option><option value="focus">重点关注</option><option value="record">违纪记录</option></select></div>
+        <div><label class="label">学生</label><input class="input" id="dc_student" placeholder="输入姓名/学号搜索" oninput="Utils.stuSuggest('dc_student','dc_sug','Dashboard.pickDiscStu')"><div class="stu-suggest" id="dc_sug" style="display:none"></div></div>
+        <div><label class="label">情况描述</label><textarea class="textarea" id="dc_desc" placeholder="如：主动帮助同学补习功课"></textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.saveDiscipline()">保存</button>`);
+    setTimeout(()=>document.getElementById('dc_student').focus(),50);
+  },
+  pickDiscStu(name){
+    document.getElementById('dc_student').value=name;
+    Utils.stuSuggestHide('dc_sug');
+  },
+  saveDiscipline(){
+    const type=document.getElementById('dc_type').value;
+    const name=document.getElementById('dc_student').value.trim();
+    const desc=document.getElementById('dc_desc').value.trim();
+    if(!name){Utils.toast('请填写学生姓名','error');return}
+    const d=Store.get('discipline',{praises:[],focus:[],records:[]});
+    d.praises=d.praises||[];d.focus=d.focus||[];d.records=d.records||[];
+    if(type==='praise'&&!d.praises.includes(name))d.praises.push(name);
+    if(type==='focus'&&!d.focus.includes(name))d.focus.push(name);
+    if(type==='record')d.records.unshift({name,desc:desc||'违纪',date:Utils.todayStr()});
+    Store.set('discipline',d);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderDiscipline();Utils.toast('已登记','success');
+  },
+
+  /* ===== 作业布置与收缴 ===== */
+  renderHomework(){
+    const hw=Store.get('homework',[])||[];
+    const students=Store.get('students',[])||[];
+    const total=students.length||1;
+    if(!hw.length){document.getElementById('hwBody').innerHTML='<div class="text-xs text-faint">暂无作业登记，点击「登记」布置今日作业</div>';return}
+    const doneSubs=hw.filter(h=>!(h.notSubmitted||[]).length).length;
+    const missTotal=hw.reduce((a,h)=>a+(h.notSubmitted||[]).length,0);
+    let html=`<div class="hw-summary">今日 ${hw.length} 科作业 · 已交齐 <b style="color:var(--primary)">${doneSubs}</b> 科 · 未交共 <b style="color:${missTotal?'var(--danger)':'var(--primary)'}">${missTotal}</b> 人次</div>`;
+    hw.forEach(h=>{
+      const miss=h.notSubmitted||[];
+      const pct=Math.round((total-miss.length)/total*100);
+      const color=pct>=90?'var(--primary)':pct>=70?'var(--amber)':'var(--danger)';
+      html+=`<div class="hw-row">
+        <span class="name">${Utils.esc(h.subject)}</span>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:linear-gradient(90deg,${color},var(--blue))"></div></div>
+        <span class="pct">${total-miss.length}/${total}</span>
+        <button class="btn btn-ghost btn-sm" onclick="Dashboard.remindHomework('${Utils.esc(h.subject)}')">催交</button>
+      </div>`;
+      if(h.content)html+=`<div class="text-xs" style="color:var(--text-2);padding:2px 0 6px 66px">📋 ${Utils.esc(h.content)}</div>`;
+      if(miss.length)html+=`<div class="flex mb-2" style="flex-wrap:wrap;gap:5px;padding-left:66px">${miss.map(n=>`<span class="pill pill-red" style="font-size:10.5px">${Utils.esc(n)}</span>`).join('')}</div>`;
+    });
+    document.getElementById('hwBody').innerHTML=html;
+  },
+  remindHomework(subject){
+    const h=(Store.get('homework',[])||[]).find(x=>x.subject===subject);
+    if(!h||!(h.notSubmitted||[]).length){Utils.toast('该学科已全部交齐','success');return}
+    const txt=`【作业催交通知】${subject}作业（${h.content||''}）还有 ${h.notSubmitted.length} 位同学未交：${h.notSubmitted.join('、')}。请家长督促孩子今天完成并订正，谢谢配合！`;
+    Utils.copyText(txt);
+  },
+  homeworkModal(){
+    const subjects=(this.allSubjects().length?this.allSubjects():['语文','数学','英语']).map(s=>`<option value="${Utils.esc(s)}">`).join('');
+    const hw=Store.get('homework',[])||[];
+    const todaySubj=hw.map(h=>`<option value="${Utils.esc(h.subject)}">`).join('');
+    Utils.modal('作业布置与收缴',`
+      <div class="flex flex-col gap-3">
+        <div><label class="label">学科</label><input class="input" id="hw_subject" list="hwSubjList" placeholder="学科" onchange="Dashboard.fillHwContent()"><datalist id="hwSubjList">${subjects}${todaySubj}</datalist></div>
+        <div><label class="label">今日作业内容（布置了什么）</label><textarea class="textarea" id="hw_content" placeholder="如：课本P52 习题1-5；练习册第3单元；背诵《岳阳楼记》前两段"></textarea></div>
+        <div><label class="label">未交学生（用顿号或逗号分隔，全交则留空）</label><textarea class="textarea" id="hw_miss" placeholder="如：张三、李四"></textarea></div>
+        <div><label class="label">按姓名快速添加未交学生</label><input class="input" id="hw_stu" placeholder="输入姓名/学号搜索，点击添加" oninput="Utils.stuSuggest('hw_stu','hw_sug','Dashboard.pickHwMiss')"><div class="stu-suggest" id="hw_sug" style="display:none"></div></div>
+        <div class="text-xs text-faint">点击搜索结果自动追加到未交名单；学科选为今天已登记过的科目时，会自动带出已填的作业内容。</div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.saveHomework()">保存</button>`);
+  },
+  fillHwContent(){
+    const subject=(document.getElementById('hw_subject').value||'').trim();
+    const h=(Store.get('homework',[])||[]).find(x=>x.subject===subject);
+    if(h&&h.content)document.getElementById('hw_content').value=h.content;
+  },
+  pickHwMiss(name){
+    const ta=document.getElementById('hw_miss');
+    const cur=(ta.value||'').split(/[、,，\s]+/).filter(Boolean);
+    if(cur.includes(name)){Utils.toast(name+' 已在未交名单中');}
+    else{cur.push(name);ta.value=cur.join('、');}
+    document.getElementById('hw_stu').value='';
+    Utils.stuSuggestHide('hw_sug');
+  },
+  saveHomework(){
+    const subject=document.getElementById('hw_subject').value.trim();
+    if(!subject){Utils.toast('请填写学科','error');return}
+    const content=document.getElementById('hw_content').value.trim();
+    const miss=document.getElementById('hw_miss').value.trim()
+      .split(/[、,，\s]+/).filter(Boolean);
+    const hw=Store.get('homework',[])||[];
+    const idx=hw.findIndex(h=>h.subject===subject);
+    if(idx>=0)hw[idx]={subject,content,notSubmitted:miss};
+    else hw.push({subject,content,notSubmitted:miss});
+    Store.set('homework',hw);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderHomework();Utils.toast('作业已登记','success');
+  },
+
+  /* ===== 课间巡查 ===== */
+  renderPatrol(){
+    const p=Store.get('patrol',[])||[];
+    if(!p.length){document.getElementById('patrolBody').innerHTML='<div class="text-xs text-faint">今日暂无巡查记录</div>';return}
+    document.getElementById('patrolBody').innerHTML='<div class="mini-list">'+p.slice(0,4).map(r=>
+      `<div class="mini-list-item"><span>${Utils.esc(r.time)} · ${Utils.esc(r.area)} ${r.status==='异常'?'<span class="pill pill-red" style="font-size:10px;padding:0 7px">异常</span>':'<span class="pill pill-green" style="font-size:10px;padding:0 7px">正常</span>'}${r.note?'<br><span class="text-xs text-faint">'+Utils.esc(r.note)+'</span>':''}</span></div>`).join('')+'</div>';
+  },
+  patrolModal(){
+    const now=new Date();
+    const t=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    Utils.modal('课间巡查登记',`
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-2">
+          <div><label class="label">时间</label><input class="input" id="pt_time" value="${t}"></div>
+          <div><label class="label">区域</label><input class="input" id="pt_area" placeholder="如：教学楼A栋" value="教学楼A栋"></div>
+        </div>
+        <div><label class="label">情况</label><select class="select" id="pt_status"><option>正常</option><option>异常</option></select></div>
+        <div><label class="label">备注</label><textarea class="textarea" id="pt_note" placeholder="异常情况说明"></textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.savePatrol()">保存</button>`);
+  },
+  savePatrol(){
+    const p=Store.get('patrol',[])||[];
+    p.unshift({
+      time:document.getElementById('pt_time').value.trim(),
+      area:document.getElementById('pt_area').value.trim(),
+      status:document.getElementById('pt_status').value,
+      note:document.getElementById('pt_note').value.trim()
+    });
+    Store.set('patrol',p);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderPatrol();Utils.toast('巡查已登记','success');
+  },
+
+  /* ===== 主题班会 ===== */
+  renderMeetings(){
+    const m=Store.get('classMeetings',[])||[];
+    if(!m.length){document.getElementById('meetBody').innerHTML='<div class="text-xs text-faint">暂无班会计划</div>';return}
+    document.getElementById('meetBody').innerHTML='<div class="mini-list">'+m.map(r=>
+      `<div class="mini-list-item"><span>${Utils.esc(r.topic)}${r.summary?'<br><span class="text-xs text-faint">'+Utils.esc(r.summary)+'</span>':''}</span>
+      <span style="text-align:right"><span class="pill ${r.status==='已开展'?'pill-green':'pill-blue'}" style="font-size:10px;padding:0 7px">${Utils.esc(r.status)}</span><br><span class="when">${Utils.esc(r.date||'')}</span></span></div>`).join('')+'</div>';
+  },
+  meetingModal(){
+    Utils.modal('班会登记',`
+      <div class="flex flex-col gap-3">
+        <div><label class="label">主题</label><input class="input" id="mt_topic" placeholder="如：感恩教育"></div>
+        <div class="grid grid-2">
+          <div><label class="label">日期</label><input class="input" type="date" id="mt_date" value="${Utils.todayStr()}"></div>
+          <div><label class="label">状态</label><select class="select" id="mt_status"><option>计划中</option><option>已开展</option></select></div>
+        </div>
+        <div><label class="label">内容摘要</label><textarea class="textarea" id="mt_summary"></textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.saveMeeting()">保存</button>`);
+  },
+  saveMeeting(){
+    const topic=document.getElementById('mt_topic').value.trim();
+    if(!topic){Utils.toast('请填写主题','error');return}
+    const m=Store.get('classMeetings',[])||[];
+    m.unshift({
+      topic,date:document.getElementById('mt_date').value,
+      status:document.getElementById('mt_status').value,
+      summary:document.getElementById('mt_summary').value.trim()
+    });
+    Store.set('classMeetings',m);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderMeetings();Utils.toast('班会已登记','success');
+  },
+
+  /* ===== 家校沟通 ===== */
+  renderComms(){
+    const c=Store.get('communications',[])||[];
+    if(!c.length){document.getElementById('commBody').innerHTML='<div class="text-xs text-faint">暂无沟通记录</div>';return}
+    document.getElementById('commBody').innerHTML='<div class="mini-list">'+c.slice(0,3).map(r=>
+      `<div class="mini-list-item"><span><b>${Utils.esc(r.student)}</b>（${Utils.esc(r.parent||'家长')}·${Utils.esc(r.channel)}）<br><span class="text-xs text-faint">${Utils.esc(r.content)}</span></span><span class="when">${Utils.esc(r.date||'')}</span></div>`).join('')+'</div>';
+  },
+  commModal(){
+    Utils.modal('家校沟通记录',`
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-2">
+          <div><label class="label">学生</label><input class="input" id="cm_student" placeholder="输入姓名/学号搜索" oninput="Utils.stuSuggest('cm_student','cm_sug','Dashboard.pickCommStu')"><div class="stu-suggest" id="cm_sug" style="display:none"></div></div>
+          <div><label class="label">家长</label><input class="input" id="cm_parent" placeholder="选择学生后自动填充"></div>
+        </div>
+        <div><label class="label">方式</label><select class="select" id="cm_channel"><option>电话</option><option>微信</option><option>面谈</option><option>家访</option></select></div>
+        <div><label class="label">沟通内容</label><textarea class="textarea" id="cm_content"></textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.saveComm()">保存</button>`);
+  },
+  pickCommStu(name){
+    document.getElementById('cm_student').value=name;
+    Utils.stuSuggestHide('cm_sug');
+    this.fillParent();
+  },
+  fillParent(){
+    const name=document.getElementById('cm_student').value.trim();
+    const s=(Store.get('students',[])||[]).find(x=>x.name===name);
+    document.getElementById('cm_parent').value=s?(s.p1Name||''):'';
+  },
+  saveComm(){
+    const student=document.getElementById('cm_student').value.trim();
+    if(!student){Utils.toast('请填写学生','error');return}
+    const c=Store.get('communications',[])||[];
+    c.unshift({
+      student,parent:document.getElementById('cm_parent').value.trim(),
+      date:Utils.todayStr(),channel:document.getElementById('cm_channel').value,
+      content:document.getElementById('cm_content').value.trim()
+    });
+    Store.set('communications',c);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderComms();Utils.toast('沟通记录已保存','success');
+  },
+
+  /* ===== 学生成长 ===== */
+  renderGrowth(){
+    const students=Store.get('students',[])||[];
+    const tagCount={};
+    students.forEach(s=>(s.tags||'').split(/[,，、]/).filter(Boolean).forEach(t=>tagCount[t.trim()]=(tagCount[t.trim()]||0)+1));
+    const g=Store.get('growth',[])||[];
+    let html='';
+    const tagColors={'心理关注':'pill-pink','学科偏科':'pill-amber','特长生':'pill-blue','待关注':'pill-red'};
+    if(Object.keys(tagCount).length){
+      html+='<div class="flex" style="flex-wrap:wrap;gap:6px">'+Object.entries(tagCount).map(([t,n])=>
+        `<span class="pill ${tagColors[t]||'pill-purple'}">${Utils.esc(t)} ${n}</span>`).join('')+'</div>';
+    }
+    if(g.length){
+      html+='<div class="mini-list mt-3">'+g.slice(0,3).map(r=>
+        `<div class="mini-list-item"><span><b>${Utils.esc(r.student)}</b>${r.tag?' <span class="pill pill-purple" style="font-size:10px;padding:0 7px">'+Utils.esc(r.tag)+'</span>':''}<br><span class="text-xs text-faint">${Utils.esc(r.content)}</span></span><span class="when">${Utils.esc(r.date||'')}</span></div>`).join('')+'</div>';
+    }
+    document.getElementById('growthBody').innerHTML=html||'<div class="text-xs text-faint">暂无标签与辅导记录</div>';
+  },
+  growthModal(){
+    Utils.modal('辅导记录',`
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-2">
+          <div><label class="label">学生</label><input class="input" id="gr_student" placeholder="输入姓名/学号搜索" oninput="Utils.stuSuggest('gr_student','gcs_sug','Dashboard.pickGrowthStu')"><div class="stu-suggest" id="gcs_sug" style="display:none"></div></div>
+          <div><label class="label">标签</label><input class="input" id="gr_tag" placeholder="如：心理关注"></div>
+        </div>
+        <div><label class="label">辅导/观察记录</label><textarea class="textarea" id="gr_content"></textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.saveGrowth()">保存</button>`);
+  },
+  pickGrowthStu(name){
+    document.getElementById('gr_student').value=name;
+    Utils.stuSuggestHide('gcs_sug');
+  },
+  saveGrowth(){
+    const student=document.getElementById('gr_student').value.trim();
+    if(!student){Utils.toast('请填写学生','error');return}
+    const g=Store.get('growth',[])||[];
+    g.unshift({student,tag:document.getElementById('gr_tag').value.trim(),content:document.getElementById('gr_content').value.trim(),date:Utils.todayStr()});
+    Store.set('growth',g);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderGrowth();Utils.toast('记录已保存','success');
+  },
+
+  /* ===== 班级活动 ===== */
+  renderActivities(){
+    const a=Store.get('activities',[])||[];
+    if(!a.length){document.getElementById('actBody').innerHTML='<div class="text-xs text-faint">暂无活动记录</div>';return}
+    document.getElementById('actBody').innerHTML='<div class="mini-list">'+a.map(r=>
+      `<div class="mini-list-item"><span>${Utils.esc(r.title)}${r.note?'<br><span class="text-xs text-faint">'+Utils.esc(r.note)+'</span>':''}</span>
+      <span style="text-align:right"><span class="pill ${r.status==='已结束'?'pill-gray':'pill-blue'}" style="font-size:10px;padding:0 7px">${Utils.esc(r.status)}</span><br><span class="when">${Utils.esc(r.date||'')}</span></span></div>`).join('')+'</div>';
+  },
+  activityModal(){
+    Utils.modal('活动登记',`
+      <div class="flex flex-col gap-3">
+        <div><label class="label">活动名称</label><input class="input" id="ac_title" placeholder="如：秋季运动会"></div>
+        <div class="grid grid-2">
+          <div><label class="label">日期</label><input class="input" type="date" id="ac_date" value="${Utils.todayStr()}"></div>
+          <div><label class="label">状态</label><select class="select" id="ac_status"><option>筹备中</option><option>进行中</option><option>已结束</option></select></div>
+        </div>
+        <div><label class="label">备注</label><textarea class="textarea" id="ac_note" placeholder="照片留存建议另行存放云盘"></textarea></div>
+      </div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-primary" onclick="Dashboard.saveActivity()">保存</button>`);
+  },
+  saveActivity(){
+    const title=document.getElementById('ac_title').value.trim();
+    if(!title){Utils.toast('请填写活动名称','error');return}
+    const a=Store.get('activities',[])||[];
+    a.unshift({title,date:document.getElementById('ac_date').value,status:document.getElementById('ac_status').value,note:document.getElementById('ac_note').value.trim()});
+    Store.set('activities',a);
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    this.renderActivities();Utils.toast('活动已登记','success');
+  }
+};
+</script>

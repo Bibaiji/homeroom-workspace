@@ -1,0 +1,10 @@
+﻿bytes=223402
+v2.3=0
+stuSuggest=0
+sched-band-merge=0
+复制号码=1
+fromWbMp=0
+tel:=1
+sms:=1
+sidebar-foot=2
+datalist=16

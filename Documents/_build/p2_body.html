@@ -1,0 +1,386 @@
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+      </div>
+      <div>
+        <div class="brand-title">班主任工作台</div>
+        <div class="brand-sub">HOMEROOM STUDIO</div>
+      </div>
+    </div>
+    <button class="nav-item active" data-page="dashboard" onclick="App.go('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg>工作台
+    </button>
+    <button class="nav-item" data-page="seating" onclick="App.go('seating')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>座次表
+    </button>
+    <button class="nav-item" data-page="duty" onclick="App.go('duty')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 14 10"/><path d="M14 10l2.5-2.5a2.1 2.1 0 0 0-3-3L11 7z"/><path d="M14 10l2.5-2.5a2.1 2.1 0 0 1 3 3L17 13"/><path d="M5 15l4 4"/></svg>值日表
+    </button>
+    <button class="nav-item" data-page="grades" onclick="App.go('grades')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>成绩分析
+    </button>
+    <button class="nav-item" data-page="roster" onclick="App.go('roster')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14.5c2.9.3 5 2.4 5 5.5"/></svg>花名册
+    </button>
+    <button class="nav-item" data-page="committee" onclick="App.go('committee')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.6L17 21l-1.5-7.5"/></svg>班委名单
+    </button>
+    <button class="nav-item" data-page="parents" onclick="App.go('parents')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>家长联系
+    </button>
+    <button class="nav-item" data-page="schedule" onclick="App.go('schedule')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>课程表
+    </button>
+    <button class="nav-item" data-page="todos" onclick="App.go('todos')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.8-5"/></svg>待办便签
+    </button>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="App.toggleSidebar(false)"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn btn-menu" onclick="App.toggleSidebar(true)" aria-label="菜单">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div style="flex:1;min-width:0">
+        <h1 id="topbarTitle">工作台 <span class="top-sub" id="topbarDate"></span></h1>
+      </div>
+      <button class="icon-btn" onclick="App.toggleTheme()" title="深浅色切换">
+        <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>
+      </button>
+      <button class="icon-btn" onclick="App.openDrawer()" title="设置与备份">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.15-1.4l2-1.55-2-3.45-2.35.95a7 7 0 0 0-2.4-1.4L13.7 2.5h-3.4l-.4 2.65a7 7 0 0 0-2.4 1.4l-2.35-.95-2 3.45 2 1.55A7 7 0 0 0 5 12c0 .48.05.94.15 1.4l-2 1.55 2 3.45 2.35-.95a7 7 0 0 0 2.4 1.4l.4 2.65h3.4l.4-2.65a7 7 0 0 0 2.4-1.4l2.35.95 2-3.45-2-1.55c.1-.46.15-.92.15-1.4z"/></svg>
+      </button>
+    </header>
+
+    <main class="content">
+
+    <!-- ==================== 工作台 ==================== -->
+    <div class="page active" id="page-dashboard">
+      <div class="card dash-hero mb-4">
+        <div>
+          <div class="dash-greet" id="dashGreeting">老师好</div>
+          <div class="text-sm text-muted" id="dashDate">--</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="pill pill-amber" id="adjChip" style="display:none"></span>
+          <button class="btn btn-ghost btn-sm" onclick="Schedule.adjustModal()">调休设置</button>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-title-row">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+            我的今日课程
+          </div>
+          <select class="select select-sm" id="mySubjectSel" onchange="Dashboard.setMySubject(this.value)"></select>
+        </div>
+        <div id="todayCourseBody"></div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+          今天要处理
+        </div>
+        <div id="todayTasks"></div>
+        <button class="btn btn-soft btn-sm mt-3" onclick="Todos.quickAddModal()">+ 添加待办</button>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8c2.5 2 4.5 2 7 0s4.5-2 7 0"/><path d="M5 18c2.5-2 4.5-2 7 0s4.5 2 7 0M5 8v10M19 8v10"/></svg>考勤</div>
+            <div class="flex gap-2">
+              <button class="btn btn-ghost btn-sm" onclick="Dashboard.attendanceModal()">标记</button>
+              <button class="btn btn-ghost btn-sm" onclick="Dashboard.attSessionsModal()">场次</button>
+            </div>
+          </div>
+          <div id="attBody"></div>
+        </div>
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.4 5.4L20 9.6l-4 4 1 5.9-5-2.8-5 2.8 1-5.9-4-4 5.6-1.2z"/></svg>课堂纪律</div>
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.disciplineModal()">登记</button>
+          </div>
+          <div id="discBody"></div>
+        </div>
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v5l4 9a3 3 0 0 1-2.7 4.3H7.7A3 3 0 0 1 5 17l4-9z"/><path d="M8 14h8"/></svg>作业收缴</div>
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.homeworkModal()">登记</button>
+          </div>
+          <div id="hwBody"></div>
+        </div>
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>课间巡查</div>
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.patrolModal()">登记</button>
+          </div>
+          <div id="patrolBody"></div>
+        </div>
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>主题班会</div>
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.meetingModal()">登记</button>
+          </div>
+          <div id="meetBody"></div>
+        </div>
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.6A8.5 8.5 0 1 1 21 11.5z"/></svg>家校沟通</div>
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.commModal()">记录</button>
+          </div>
+          <div id="commBody"></div>
+        </div>
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2 4.3 4.7.6-3.4 3.3.8 4.7L12 13.7l-4.1 2.2.8-4.7L5.3 7.9l4.7-.6z"/><path d="M19 17l.8 1.8L21.5 20"/></svg>学生成长</div>
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.growthModal()">辅导记录</button>
+          </div>
+          <div id="growthBody"></div>
+        </div>
+        <div class="card">
+          <div class="card-title-row">
+            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3 6.5 7 .9-5.1 4.8 1.3 7-6.2-3.4L5.8 21l1.3-7L2 9.4l7-.9z"/></svg>班级活动</div>
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.activityModal()">登记</button>
+          </div>
+          <div id="actBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 座次表 ==================== -->
+    <div class="page" id="page-seating">
+      <div class="card-title-row mb-3">
+        <h2 class="text-lg font-bold">座次表 <span class="subtle" id="seatCount"></span></h2>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <input class="input" id="seatSearch" placeholder="搜索学生定位…" style="width:170px" oninput="Seating.render()">
+          <button class="btn btn-primary btn-sm" onclick="Seating.rotateModal()">每周换座</button>
+          <button class="btn btn-ghost btn-sm" onclick="Seating.swapModal()">指定交换</button>
+          <button class="btn btn-ghost btn-sm" onclick="Seating.sizeModal()">设置行列</button>
+          <button class="btn btn-ghost btn-sm" onclick="Seating.randomize()">随机排座</button>
+        </div>
+      </div>
+      <div class="card seat-wrap">
+        <div class="seat-podium">讲 台</div>
+        <div class="seat-grid" id="seatingGrid"></div>
+      </div>
+      <div class="text-xs text-faint mt-3">拖拽座位可交换位置 · 点击学生姓名可搜索选择与其交换座位 · 点击空位安排学生 · 绿色角标为班委职务 · 「每周换座」= 全班按方向轮换（可在设置中开启每周自动换座）</div>
+    </div>
+
+    <!-- ==================== 值日表 ==================== -->
+    <div class="page" id="page-duty">
+      <div class="card-title-row mb-3">
+        <h2 class="text-lg font-bold">值日表 <span class="subtle" id="dutyWeekLabel"></span></h2>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="Duty.shift(-1)">‹ 上周</button>
+          <button class="btn btn-ghost btn-sm" onclick="Duty.shift(1)">下周 ›</button>
+          <button class="btn btn-ghost btn-sm" onclick="Duty.copyLastWeek()">复制上周</button>
+          <button class="btn btn-ghost btn-sm" onclick="Duty.copyMonToAll()">周一复制到全周</button>
+          <button class="btn btn-ghost btn-sm" onclick="Duty.daysModal()">周天数</button>
+        </div>
+      </div>
+      <div class="card" style="overflow-x:auto"><div class="duty-grid" id="dutyGrid"></div></div>
+      <div class="text-xs text-faint mt-3">点击格子可添加/移除值日生（支持多人）、设置卫生区域</div>
+    </div>
+
+    <!-- ==================== 成绩分析 ==================== -->
+    <div class="page" id="page-grades">
+      <div class="card-title-row mb-3">
+        <h2 class="text-lg font-bold">成绩分析 <span class="subtle" id="gradesExamName"></span></h2>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="Grades.editModal()">录入成绩</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('gradesImportInput').click()">导入CSV</button>
+          <button class="btn btn-primary btn-sm" onclick="Grades.exportCSV()">导出CSV</button>
+        </div>
+      </div>
+      <div class="kpi-row" id="gradesKpi"></div>
+      <div class="grid grid-2 mb-4">
+        <div class="card chart-card">
+          <div class="card-title">各学科平均分</div>
+          <div id="chartBar"></div>
+        </div>
+        <div class="card chart-card">
+          <div class="card-title">成绩分段分布</div>
+          <div id="chartPie"></div>
+        </div>
+      </div>
+      <div class="card"><div id="gradeRankBody"></div></div>
+      <input type="file" id="gradesImportInput" accept=".csv,.txt" style="display:none" onchange="Grades.importCSV(this)">
+    </div>
+
+    <!-- ==================== 花名册 ==================== -->
+    <div class="page" id="page-roster">
+      <div class="card-title-row mb-3">
+        <h2 class="text-lg font-bold">花名册 <span class="subtle" id="rosterCount"></span></h2>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="Roster.add()">+ 添加学生</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('rosterImportInput').click()">导入CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="Roster.exportCSV()">导出CSV</button>
+        </div>
+      </div>
+      <div class="flex gap-2 mb-3" style="flex-wrap:wrap">
+        <input class="input" id="rosterSearch" placeholder="搜索姓名/学号/家长/电话…" style="flex:1;min-width:180px" oninput="Roster.render()">
+        <select class="select" id="rosterGenderFilter" style="width:92px" onchange="Roster.render()">
+          <option value="">全部</option><option value="男">男生</option><option value="女">女生</option>
+        </select>
+        <select class="select" id="rosterGroupFilter" style="width:104px" onchange="Roster.render()"></select>
+        <select class="select" id="rosterTagFilter" style="width:120px" onchange="Roster.render()"></select>
+        <button class="btn btn-ghost btn-sm" id="viewToggleBtn" onclick="Roster.toggleView()">卡片视图</button>
+      </div>
+      <div id="rosterContent"></div>
+      <input type="file" id="rosterImportInput" accept=".csv,.txt" style="display:none" onchange="Roster.importCSV(this)">
+    </div>
+
+    <!-- ==================== 班委名单 ==================== -->
+    <div class="page" id="page-committee">
+      <div class="card-title-row mb-3">
+        <h2 class="text-lg font-bold">班委名单</h2>
+        <button class="btn btn-primary btn-sm" onclick="Committee.editModal()">+ 添加职务</button>
+      </div>
+      <div id="committeeContent"></div>
+    </div>
+
+    <!-- ==================== 家长联系方式 ==================== -->
+    <div class="page" id="page-parents">
+      <div class="card-title-row mb-3">
+        <h2 class="text-lg font-bold">家长联系方式</h2>
+        <input class="input" id="parentSearch" placeholder="搜索学生/家长/电话…" style="width:200px" oninput="Parents.render()">
+      </div>
+      <div id="parentsContent"></div>
+    </div>
+
+    <!-- ==================== 课程表 ==================== -->
+    <div class="page" id="page-schedule">
+      <div class="card-title-row mb-3">
+        <h2 class="text-lg font-bold">课程表 <span class="subtle" id="scheduleStatus"></span></h2>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="Schedule.managePeriods()">管理节次</button>
+          <button class="btn btn-ghost btn-sm" onclick="Schedule.adjustModal()">调休</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('scheduleImportInput').click()">导入课表</button>
+          <button class="btn btn-primary btn-sm" onclick="Schedule.exportCSV()">导出CSV</button>
+        </div>
+      </div>
+      <div class="class-tabs" id="classTabs"></div>
+      <div class="card sched-wrap">
+        <table class="sched-table" id="schedTable"></table>
+      </div>
+      <div class="text-xs text-faint mt-3" id="scheduleLegend">绿色表头 = 今天 · 呼吸灯 = 正在进行的环节 · 点击格子编辑课程 · 「管理节次」可增删大课间/午餐/晚自习/查寝等环节</div>
+      <input type="file" id="scheduleImportInput" accept=".csv,.txt" style="display:none" onchange="Schedule.importCSV(this)">
+    </div>
+
+    <!-- ==================== 待办便签 ==================== -->
+    <div class="page" id="page-todos">
+      <div class="todo-input-row">
+        <input class="input" id="todoInput" placeholder="要做什么？回车快速添加…" onkeydown="if(event.key==='Enter')Todos.add()">
+        <input class="input" type="date" id="todoDate">
+        <select class="select" id="todoPriority">
+          <option value="normal">普通</option><option value="important">重要</option><option value="urgent">紧急</option>
+        </select>
+        <button class="btn btn-primary" onclick="Todos.add()">添加</button>
+      </div>
+      <div class="card mb-4"><div id="todoList"></div></div>
+      <div class="card sticky-note">
+        <div class="card-title" style="color:var(--amber)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v13l-4 4H4z"/><path d="M16 21v-4h4"/></svg>便签
+        </div>
+        <textarea class="textarea" id="notesArea" style="background:transparent;border:none;padding:4px;min-height:110px" placeholder="随手记…" onchange="Todos.saveNotes(this.value)"></textarea>
+      </div>
+    </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ==================== 设置抽屉 ==================== -->
+<div class="drawer-backdrop" id="drawerBackdrop" onclick="App.closeDrawer()"></div>
+<div class="drawer" id="settingsDrawer">
+  <div class="drawer-head">
+    <div class="text-lg font-bold">设置</div>
+    <button class="modal-close" onclick="App.closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-sec">
+      <div class="drawer-sec-title">周设置</div>
+      <div class="grid grid-2 gap-2">
+        <div><label class="label">一周第一天</label>
+          <select class="select" id="weekStartSel" onchange="App.setWeekStart(this.value)">
+            <option value="monday">周一</option><option value="sunday">周日</option>
+          </select>
+        </div>
+        <div><label class="label">值日表一周天数</label>
+          <select class="select" id="dutyDaysSel" onchange="App.setDutyDays(this.value)">
+            <option value="5">5天（周一~周五）</option>
+            <option value="6">6天（含周六）</option>
+            <option value="7">7天（含周日晚补课）</option>
+          </select>
+        </div>
+      </div>
+      <div class="text-xs text-faint mt-2">影响值日表/课程表的周起始日与值日表显示的天数。</div>
+    </div>
+    <div class="drawer-sec">
+      <div class="drawer-sec-title">课表显示</div>
+      <label class="label">特殊环节合并显示</label>
+      <select class="select" id="schedMergeSel" onchange="App.setSchedMerge(this.value)">
+        <option value="on">合并为一行（早餐/晚餐等整天相同的环节）</option>
+        <option value="off">按天分开显示</option>
+      </select>
+      <div class="text-xs text-faint mt-2">合并后早餐、晚餐、午休等全天相同的节次将居中显示为一整行，点击可编辑。</div>
+    </div>
+    <div class="drawer-sec">
+      <div class="drawer-sec-title">座次表每周自动换座</div>
+      <div class="grid grid-2 gap-2">
+        <div><label class="label">自动换座</label>
+          <select class="select" id="seatAutoSel" onchange="App.setSeatAuto(this.value)">
+            <option value="on">开启</option><option value="off">关闭</option>
+          </select>
+        </div>
+        <div><label class="label">换座方式</label>
+          <select class="select" id="seatDirSel" onchange="App.setSeatDir(this.value)">
+            <option value="lb">左移一列 + 后移一排</option>
+            <option value="l">仅左移一列</option>
+            <option value="b">仅后移一排</option>
+            <option value="rf">右移一列 + 前移一排</option>
+            <option value="r">仅右移一列</option>
+            <option value="f">仅前移一排</option>
+          </select>
+        </div>
+      </div>
+      <div class="text-xs text-faint mt-2">每到新的一周首次打开时自动轮换座位（环形回绕：最后一排→第一排，最左列→最右列）。</div>
+    </div>
+    <div class="drawer-sec">
+      <div class="drawer-sec-title">我的授课学科</div>
+      <select class="select" id="mySubjectDrawer" onchange="Dashboard.setMySubject(this.value)"></select>
+      <div class="text-xs text-faint mt-2">首页「我的今日课程」将聚合显示各班该学科的课</div>
+    </div>
+    <div class="drawer-sec">
+      <div class="drawer-sec-title">数据备份与恢复</div>
+      <button class="btn btn-ghost" onclick="App.exportBackup()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v3h16v-3"/></svg>导出备份文件
+      </button>
+      <button class="btn btn-ghost" onclick="document.getElementById('restoreInput').click()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m0 0 4 4m-4-4L8 7"/><path d="M4 17v3h16v-3"/></svg>导入恢复备份
+      </button>
+      <div class="text-xs text-faint">备份为单个 .json 文件，可通过微信/网盘在电脑与手机间互传，实现手动同步。</div>
+      <input type="file" id="restoreInput" accept=".json" style="display:none" onchange="App.importBackup(this)">
+    </div>
+    <div class="drawer-sec">
+      <div class="drawer-sec-title">示例数据</div>
+      <button class="btn btn-soft" onclick="App.loadSample()">重新加载示例数据</button>
+      <button class="btn btn-danger" onclick="App.clearAllData()">一键清空全部数据</button>
+      <div class="text-xs text-faint">清空后回到空白工作台（可再加载示例）。</div>
+    </div>
+    <div class="drawer-sec">
+      <div class="drawer-sec-title">关于</div>
+      <div class="text-xs text-faint" style="line-height:1.9">中学班主任工作台 v2.3<br>单文件离线应用 · 数据仅存于本机浏览器<br>Windows：Edge「安装站点为应用」<br>iPhone/Android：Safari「添加到主屏幕」/ Chrome「添加到主屏幕」</div>
+    </div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>

@@ -1,0 +1,353 @@
+
+/* ================= 工具 ================= */
+const Utils={
+  esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))},
+  toast(msg,type){
+    const t=document.createElement('div');
+    t.className='toast '+(type==='error'?'toast-error':'toast-success');
+    t.textContent=msg;
+    document.getElementById('toastRoot').appendChild(t);
+    setTimeout(()=>{t.classList.add('toast-out');setTimeout(()=>t.remove(),260)},2200);
+  },
+  modal(title,body,footer){
+    const wrap=document.createElement('div');
+    wrap.className='modal-overlay';
+    wrap.innerHTML=`<div class="modal">
+      <div class="modal-head"><div class="modal-title">${title}</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+      <div class="modal-body">${body}</div>
+      ${footer?`<div class="modal-foot">${footer}</div>`:''}
+    </div>`;
+    wrap.addEventListener('click',e=>{if(e.target===wrap)wrap.remove()});
+    document.getElementById('modalRoot').appendChild(wrap);
+    return wrap;
+  },
+  confirm(title,msg,okJS,okLabel){
+    this.modal(title,`<div class="text-sm" style="color:var(--text-2);line-height:1.8">${msg}</div>`,
+      `<button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">取消</button>
+       <button class="btn btn-danger" onclick="${okJS}">${okLabel||'确定'}</button>`);
+  },
+  copyText(text){
+    const done=()=>Utils.toast('已复制到剪贴板','success');
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>this._copyFallback(text,done))}
+    else this._copyFallback(text,done);
+  },
+  _copyFallback(text,done){
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');done()}catch(e){Utils.toast('复制失败，请手动复制','error')}
+    ta.remove();
+  },
+  csvEscape(v){
+    v=String(v==null?'':v);
+    return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
+  },
+  downloadCSV(csv,name){
+    const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=name;a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  },
+  parseCSVWithHeader(text){
+    text=String(text||'').replace(/^\ufeff/,'').replace(/\r\n?/g,'\n');
+    const lines=text.split('\n').filter(l=>l.trim()!=='');
+    if(!lines.length)return[];
+    const parseLine=line=>{
+      const out=[];let cur='',inQ=false;
+      for(let i=0;i<line.length;i++){
+        const c=line[i];
+        if(inQ){
+          if(c==='"'){if(line[i+1]==='"'){cur+='"';i++}else inQ=false}
+          else cur+=c;
+        }else{
+          if(c==='"')inQ=true;
+          else if(c===','){out.push(cur);cur=''}
+          else cur+=c;
+        }
+      }
+      out.push(cur);return out;
+    };
+    const headers=parseLine(lines[0]).map(h=>h.trim());
+    return lines.slice(1).map(l=>{
+      const cells=parseLine(l);const row={};
+      headers.forEach((h,i)=>row[h]=(cells[i]||'').trim());
+      return row;
+    });
+  },
+  todayStr(){
+    const d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  },
+  formatDate(d){
+    return (d.getMonth()+1)+'月'+d.getDate()+'日';
+  },
+  avatarColor(name){
+    const colors=['#5B7065','#7C93A8','#C2A88A','#9A8FA8','#8FA69B','#C48B9F','#A9B4AC','#8BA3B8'];
+    let hash=0;for(let i=0;i<name.length;i++)hash=name.charCodeAt(i)+((hash<<5)-hash);
+    return colors[Math.abs(hash)%colors.length];
+  },
+  smsTemplate(student){
+    return `【班级通知】尊敬的${student}家长，您好！现向您反馈孩子近期在校情况，请家长关注孩子学习与生活状态，如有需要请及时与班主任联系。`;
+  }
+};
+
+/* ================= 本地存储 ================= */
+const Store={
+  P:'hw_',
+  get(k,d){
+    try{
+      const v=localStorage.getItem(this.P+k);
+      if(v==null)return d;
+      const parsed=JSON.parse(v);
+      return (parsed==null&&(d!==undefined))?d:parsed;
+    }catch(e){return d}
+  },
+  set(k,v){localStorage.setItem(this.P+k,JSON.stringify(v))},
+  del(k){localStorage.removeItem(this.P+k)},
+  keys(){return Object.keys(localStorage).filter(k=>k.startsWith(this.P)).map(k=>k.slice(this.P.length))},
+  clearAll(){this.keys().forEach(k=>localStorage.removeItem(this.P+k))},
+  exportAll(){
+    const out={_app:'homeroom-workspace',_v:2,_exported:new Date().toISOString()};
+    this.keys().forEach(k=>out[k]=this.get(k));
+    return out;
+  },
+  importAll(obj){
+    if(!obj||obj._app!=='homeroom-workspace')throw new Error('不是有效的工作台备份文件');
+    this.keys().forEach(k=>localStorage.removeItem(this.P+k));
+    Object.keys(obj).forEach(k=>{
+      if(k.startsWith('_'))return;
+      this.set(k,obj[k]);
+    });
+  }
+};
+
+/* ================= 班委职务映射 ================= */
+const RoleHelper={
+  map(){
+    const m={};
+    (Store.get('committee',[])||[]).forEach(cat=>(cat.roles||[]).forEach(r=>{
+      if(r.student)m[r.student]=r.title;
+    }));
+    return m;
+  },
+  roleOf(name,m){return (m||this.map())[name]||''},
+  pill(name,m){
+    const r=this.roleOf(name,m);
+    return r?`<span class="pill pill-green" style="font-size:10px;padding:1px 8px">${this.esc(r)}</span>`:'';
+  },
+  esc(s){return Utils.esc(s)}
+};
+
+/* ================= 示例数据 ================= */
+const SampleData={
+  DEFAULT_PERIODS:[
+    {id:1,type:'ceremony',name:'升旗仪式',time:'07:50-08:10',days:[1]},
+    {id:2,type:'class',name:'第1节',time:'08:20-09:05'},
+    {id:3,type:'class',name:'第2节',time:'09:15-10:00'},
+    {id:4,type:'break',name:'大课间',time:'10:00-10:30'},
+    {id:5,type:'class',name:'第3节',time:'10:30-11:15'},
+    {id:6,type:'class',name:'第4节',time:'11:25-12:10'},
+    {id:7,type:'meal',name:'午餐',time:'12:10-13:00'},
+    {id:8,type:'class',name:'第5节',time:'13:10-13:55'},
+    {id:9,type:'class',name:'第6节',time:'14:05-14:50'},
+    {id:10,type:'class',name:'第7节',time:'15:00-15:45'},
+    {id:11,type:'class',name:'第8节',time:'15:55-16:40'},
+    {id:12,type:'meal',name:'晚餐',time:'17:00-18:00'},
+    {id:13,type:'selfstudy',name:'晚自习',time:'18:40-20:30'},
+    {id:14,type:'dorm',name:'查寝',time:'21:30-22:00'}
+  ],
+  names:['李思远','王雨萱','张浩然','刘欣怡','陈子墨','杨若曦','赵天宇','孙悦然','周子轩','吴雨桐','郑博文','冯雅琪','蒋明轩','韩雪宁','曹俊熙','谢佳怡','邹宇航','沈诗涵','罗俊杰','苏婉清','唐嘉铭','许静怡','邓子豪','冯梦洁','曹立诚','袁梦琪','高翔宇','林芳华','罗雨欣','何俊杰'],
+  p1Names:['李建国','王志强','张伟明','刘德海','陈国栋','杨建军','赵立新','孙明辉','周文彬','吴国平','郑海涛','冯玉林','蒋春华','韩志远','曹永强','谢立群','邹德旺','沈国梁','罗永康','苏建明','唐文辉','许国豪','邓伟东','冯志坚','曹立业','袁成刚','高峰','林振国','罗立诚','何建波'],
+  p2Names:['王秀兰','李桂芳','张丽华','刘雅琴','陈慧敏','杨淑芬','赵美玲','孙玉华','周丽娟','吴淑珍','郑秀英','冯丽萍','蒋玉兰','韩淑华','曹桂香','谢丽芳','邹美珍','沈玉凤','罗淑兰','苏雅丽','唐秀英','许慧兰','邓丽华','冯秀珍','曹淑芬','袁美凤','高丽娟','林秀珍','罗慧芳','何玉兰'],
+  addresses:['幸福路12号院3-502','文化路88号1-301','和平街25号5-1201','阳光小区7-2-603','锦绣花园3-1-402','育才路56号2-802','翠湖苑9-3-1102','春风巷18号4-203','望江路30号6-1501','杏花村小区2-5-701'],
+  tags:['心理关注,学科偏科','特长生','学习标兵','','体育特长','','学科偏科,待关注','艺术特长','','进步之星','','心理关注','','','','特长生,艺术特长','','','学科偏科','','学习标兵','','','待关注','','体育特长','','进步之星',''],
+  load(){
+    if(Store.get('students')||Store.get('inited'))return;
+    const today=Utils.todayStr();
+    const yest=new Date(Date.now()-86400000);
+    const yesterday=yest.getFullYear()+'-'+String(yest.getMonth()+1).padStart(2,'0')+'-'+String(yest.getDate()).padStart(2,'0');
+    const tomorrow=new Date(Date.now()+86400000);
+    const tomorrowStr=tomorrow.getFullYear()+'-'+String(tomorrow.getMonth()+1).padStart(2,'0')+'-'+String(tomorrow.getDate()).padStart(2,'0');
+
+    const students=this.names.map((n,i)=>({
+      id:'2026'+String(i+1).padStart(3,'0'),
+      name:n,
+      gender:i%2===0?'男':'女',
+      birthDate:'2011-'+String((i%12)+1).padStart(2,'0')+'-'+String((i%27)+1).padStart(2,'0'),
+      p1Name:this.p1Names[i],p1Phone:'139'+String(10000000+i*137331).slice(-8),
+      p2Name:this.p2Names[i],p2Phone:'158'+String(20000000+i*918273).slice(-8),
+      address:this.addresses[i%this.addresses.length],
+      group:Math.floor(i/6)+1,
+      tags:this.tags[i]||'',
+      note:i===4?'需要重点关注家庭情况':''
+    }));
+    Store.set('students',students);
+
+    // 课程表
+    Store.set('schedulePeriods',this.DEFAULT_PERIODS);
+    const classes=['初三(1)班','初三(2)班'];
+    Store.set('scheduleClasses',classes);
+    const subjects=['语文','数学','英语','物理','化学','生物','政治','历史','地理','体育','音乐','美术'];
+    const teachers=['王慧敏','李建国','张琳','刘志远','陈思雨','杨帆','赵雅琴','黄文彬','周敏','吴强','徐静','孙悦'];
+    const classPeriodIds=[2,3,5,6,8,9,10,11];
+    classes.forEach((cn,ci)=>{
+      const entries=[];
+      for(let d=1;d<=5;d++){
+        classPeriodIds.forEach((pid,pi)=>{
+          const si=(d*8+pi+ci*5)%subjects.length;
+          entries.push({day:d,periodId:pid,subject:subjects[si],teacher:teachers[si],room:(ci===0?'A栋301':'B栋205')});
+        });
+      }
+      [2,3,5,6].forEach((pid,pi)=>{
+        const si=(6*8+pi+ci*5)%subjects.length;
+        entries.push({day:6,periodId:pid,subject:subjects[si],teacher:teachers[si],room:(ci===0?'A栋301':'B栋205')});
+      });
+      Store.set('schedule_'+cn,entries);
+    });
+    Store.set('mySubject','数学');
+
+    // 座次表
+    const seating={rows:6,cols:5,layout:[]};
+    students.forEach((s,i)=>{
+      seating.layout.push({r:Math.floor(i/5),c:i%5,sid:s.id});
+    });
+    Store.set('seating',seating);
+
+    // 成绩
+    const gSubjects=['语文','数学','英语','物理','化学'];
+    const grades=students.map((s,i)=>({
+      name:s.name,
+      scores:gSubjects.map((sub,j)=>{
+        const base=[82,78,75,71,80][j];
+        return {subject:sub,score:Math.min(100,Math.max(38,base+((i*7+j*11)%29)-14))};
+      })
+    }));
+    Store.set('grades',grades);
+    Store.set('gradesExam','期中考试');
+
+    // 值日表
+    const duty={weekOffset:0,grid:{}};
+    const dutySetup=[[['孙悦然','谢佳怡'],'教室+走廊'],[['邹宇航','沈诗涵'],'卫生区+楼梯'],[['罗俊杰','苏婉清'],'教室+黑板'],[['唐嘉铭','许静怡'],'走廊+窗台'],[['邓子豪','冯梦洁'],'教室+卫生角']];
+    dutySetup.forEach((v,i)=>{
+      ['早读','课间','放学'].forEach(slot=>{
+        duty.grid[(i+1)+'_'+slot]={students:v[0],area:v[1]+(slot==='放学'?'（放学后）':'')};
+      });
+    });
+    Store.set('duty',duty);
+
+    // 班委
+    Store.set('committee',[
+      {cat:'班委',roles:[
+        {title:'班长',student:'李思远',duty:'统筹班级日常事务，协助班主任管理班级'},
+        {title:'副班长',student:'王雨萱',duty:'协助班长工作，负责班级日志记录'},
+        {title:'学习委员',student:'刘欣怡',duty:'收发作业、沟通任课老师、组织学习互助'},
+        {title:'纪律委员',student:'赵天宇',duty:'维持课堂与课间纪律，记录纪律情况'},
+        {title:'卫生委员',student:'孙悦然',duty:'安排值日、检查卫生、管理卫生工具'},
+        {title:'文艺委员',student:'吴雨桐',duty:'组织文艺活动、班级文化建设'},
+        {title:'体育委员',student:'周子轩',duty:'整队带操、组织体育活动、管理体育器材'}
+      ]},
+      {cat:'课代表',roles:[
+        {title:'语文课代表',student:'杨若曦',duty:'收发语文作业、领早读'},
+        {title:'数学课代表',student:'陈子墨',duty:'收发数学作业、登记收缴情况'},
+        {title:'英语课代表',student:'张浩然',duty:'收发英语作业、领读英语'},
+        {title:'物理课代表',student:'蒋明轩',duty:'收发物理作业、准备实验器材'},
+        {title:'化学课代表',student:'郑博文',duty:'收发化学作业、准备实验器材'}
+      ]},
+      {cat:'组长',roles:[
+        {title:'第1组组长',student:'刘欣怡',duty:'收发本组作业、组织小组讨论'},
+        {title:'第2组组长',student:'赵天宇',duty:'收发本组作业、组织小组讨论'},
+        {title:'第3组组长',student:'蒋明轩',duty:'收发本组作业、组织小组讨论'},
+        {title:'第4组组长',student:'唐嘉铭',duty:'收发本组作业、组织小组讨论'},
+        {title:'第5组组长',student:'曹立诚',duty:'收发本组作业、组织小组讨论'}
+      ]}
+    ]);
+
+    // 待办
+    Store.set('todos',[
+      {id:'t1',text:'收齐数学周末试卷并批改',done:false,due:today,priority:'urgent'},
+      {id:'t2',text:'准备周五家长会PPT与成绩单',done:false,due:tomorrowStr,priority:'important'},
+      {id:'t3',text:'找陈子墨谈心（近期状态下滑）',done:false,due:today,priority:'important'},
+      {id:'t4',text:'上报本月班级用电量',done:false,due:yesterday,priority:'normal'},
+      {id:'t5',text:'检查教室多媒体设备报修',done:true,due:yesterday,priority:'normal'}
+    ]);
+    Store.set('notes','下周三家长会准备：\n1. 学生成绩分析报告\n2. 班级工作总结\n3. 个别学生情况沟通\n4. 会场布置与签到表');
+
+    // 首页各模块
+    Store.set('attendance',{date:today,records:students.map((s,i)=>({sid:s.id,name:s.name,status:i===13?'late':(i===24?'leave':'present')}))});
+    Store.set('discipline',{praises:['张浩然','许静怡'],focus:['陈子墨','冯梦洁'],records:[{name:'邓子豪',desc:'课间在走廊追逐打闹',date:today}]});
+    Store.set('homework',[
+      {subject:'数学',notSubmitted:['陈子墨','邹宇航','邓子豪']},
+      {subject:'语文',notSubmitted:['沈诗涵']},
+      {subject:'英语',notSubmitted:['冯梦洁','罗俊杰','曹立诚','袁梦琪']},
+      {subject:'物理',notSubmitted:[]}
+    ]);
+    Store.set('patrol',[
+      {time:'09:50',area:'教学楼A栋',status:'正常',note:''},
+      {time:'10:30',area:'操场',status:'异常',note:'初三(2)班两名男生打球过激，已提醒'}
+    ]);
+    Store.set('classMeetings',[
+      {topic:'新学期安全教育',date:yesterday,status:'已开展',summary:'交通安全、防溺水、消防安全'},
+      {topic:'感恩教育主题班会',date:tomorrowStr,status:'计划中',summary:'观看视频+学生分享与父母的故事'}
+    ]);
+    Store.set('communications',[
+      {student:'陈子墨',parent:'陈国栋',date:today,channel:'电话',content:'沟通近期上课注意力不集中问题，建议家长多陪伴关注'},
+      {student:'许静怡',parent:'许国豪',date:yesterday,channel:'微信',content:'表扬近期作业质量与课堂表现明显进步'}
+    ]);
+    Store.set('growth',[
+      {student:'陈子墨',date:today,tag:'学科偏科',content:'数学基础薄弱但态度端正，安排张浩然一对一帮扶'},
+      {student:'沈诗涵',date:yesterday,tag:'心理关注',content:'因家庭原因情绪低落，已与心理老师沟通，持续关注'}
+    ]);
+    Store.set('activities',[
+      {title:'秋季运动会',date:yesterday,status:'已结束',note:'获得团体总分第二名'},
+      {title:'英语课本剧比赛',date:tomorrowStr,status:'筹备中',note:'已确定参演名单，利用午休排练'}
+    ]);
+  },
+  /* 旧版本数据迁移 */
+  migrate(){
+    // 课表 v1(单班schedule)/v2(多班schedule_班级，period为数字) → v3(节次行+periodId)
+    if(!Store.get('schedulePeriods')){
+      const oldFlat=Store.get('schedule');
+      const classes=Store.get('scheduleClasses');
+      if(Array.isArray(oldFlat)&&oldFlat.length&&!Array.isArray(classes)){
+        Store.set('scheduleClasses',['默认班级']);
+        Store.set('schedule_默认班级',oldFlat);
+      }
+      const cls=Array.isArray(Store.get('scheduleClasses'))?Store.get('scheduleClasses'):[];
+      if(cls.length){
+        const timeMap={};
+        cls.forEach(cn=>(Store.get('schedule_'+cn)||[]).forEach(e=>{
+          if(e&&e.time&&!timeMap[e.period])timeMap[e.period]=e.time;
+        }));
+        const nos=Object.keys(timeMap).map(Number).filter(n=>!isNaN(n)).sort((a,b)=>a-b);
+        const periods=nos.length?nos.map(n=>({id:n,type:'class',name:'第'+n+'节',time:timeMap[n]||''})):this.DEFAULT_PERIODS;
+        Store.set('schedulePeriods',periods);
+        cls.forEach(cn=>{
+          const arr=(Store.get('schedule_'+cn)||[])
+            .map(e=>({day:e.day,periodId:e.period,subject:e.subject,teacher:e.teacher,room:e.room}))
+            .filter(e=>e.periodId!=null);
+          Store.set('schedule_'+cn,arr);
+        });
+      }
+    }
+    // 花名册：旧单家长字段 → 双家长字段
+    const sts=Store.get('students');
+    if(Array.isArray(sts)&&sts.length){
+      let ch=false;
+      sts.forEach(s=>{
+        if(s.parentName&&!s.p1Name){s.p1Name=s.parentName;delete s.parentName;ch=true}
+        if(s.parentPhone&&!s.p1Phone){s.p1Phone=s.parentPhone;delete s.parentPhone;ch=true}
+      });
+      if(ch)Store.set('students',sts);
+    }
+    // 值日表：单值日生 → 多人
+    const d=Store.get('duty');
+    if(d&&d.grid){
+      let ch=false;
+      Object.keys(d.grid).forEach(k=>{
+        const c=d.grid[k];
+        if(c&&typeof c.student==='string'){c.students=c.student?[c.student]:[];delete c.student;ch=true}
+      });
+      if(ch)Store.set('duty',d);
+    }
+  }
+};
